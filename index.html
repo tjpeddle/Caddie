@@ -151,40 +151,7 @@
             font-family: 'JetBrains Mono', monospace;
         }
         
-        /* Quick Info Display */
-        .info-bar {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .info-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            padding: 16px;
-            text-align: center;
-        }
-        
-        .info-label {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            opacity: 0.6;
-            margin-bottom: 4px;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        
-        .info-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+        /* Quick Info (hidden - data tracked internally) */
         
         /* Bottom Actions */
         .bottom-actions {
@@ -295,8 +262,8 @@
             <h1>⛳ Voice Caddie</h1>
             <p>
                 Put your phone in your bag.<br>
-                Just talk to me like a real caddie.<br>
-                I'll remember everything.
+                Talk to me like a real caddie.<br>
+                I'll help you play your best.
             </p>
             <button class="start-btn" id="startBtn">Let's Go</button>
         </div>
@@ -311,20 +278,11 @@
             <div class="subtitle" id="courseInfo">Ready when you are</div>
         </div>
         
-        <!-- Quick Info Bar -->
-        <div class="info-bar">
-            <div class="info-card">
-                <div class="info-label">Hole</div>
-                <div class="info-value" id="currentHole">--</div>
-            </div>
-            <div class="info-card">
-                <div class="info-label">Distance</div>
-                <div class="info-value" id="distanceDisplay">--</div>
-            </div>
-            <div class="info-card">
-                <div class="info-label">Score</div>
-                <div class="info-value" id="scoreDisplay">0</div>
-            </div>
+        <!-- Hidden data holders (AI tracks these, no visual display needed) -->
+        <div style="display:none;">
+            <span id="currentHole">--</span>
+            <span id="distanceDisplay">--</span>
+            <span id="scoreDisplay">0</span>
         </div>
         
         <!-- Voice Interface -->
@@ -338,7 +296,7 @@
                     Tap mic to start
                 </div>
                 <div class="caddie-speaks" id="caddieMessage">
-                    Put your phone in your bag and just talk
+                    Ready to talk golf
                 </div>
                 <div class="you-said" id="yourMessage"></div>
                 
@@ -350,10 +308,9 @@
         </div>
         
         <!-- Bottom Actions -->
-        <div class="bottom-actions">
+        <div class="bottom-actions" style="grid-template-columns: repeat(2, 1fr);">
             <button class="action-btn" id="statsBtn">📈 My Game</button>
             <button class="action-btn" id="historyBtn">🏌️ History</button>
-            <button class="action-btn" id="insightsBtn">💭 Ask AI</button>
         </div>
         
     </div>
@@ -470,15 +427,16 @@
                     conditions
                 } = context;
                 
-                let systemPrompt = `You are an expert golf caddie and coach with deep knowledge of:
-- Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
-- Golf strategy, course management, and shot selection
-- Club performance analysis and recommendations
-- Mental game, confidence building, and coaching
-- Golf rules, etiquette, and technique
-
-Be conversational, supportive, and concise (2-3 sentences unless explaining concepts).
-Use web search when asked about current conditions, specific courses, weather, or recent updates.
+                let systemPrompt = `You are an expert golf caddie having a natural conversation with your player. You're walking the course together. Your style:
+- Talk like a real caddie: casual, confident, supportive
+- Keep responses SHORT (1-3 sentences) unless explaining a concept
+- Know Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
+- Know golf strategy, course management, club selection, mental game
+- Give specific advice, not generic tips
+- If the player mentions a course, help them get set up naturally
+- If they haven't set up clubs yet, casually ask about their distances
+- Track their game and reference their patterns
+- Be encouraging but honest
 
 Current Game State:`;
 
@@ -494,6 +452,10 @@ Current Game State:`;
                 }
                 if (conditions?.windy) systemPrompt += `\n- Wind present`;
                 if (clubHistory) systemPrompt += `\n- Player performance data available`;
+                if (context.playerClubs) {
+                    const clubs = context.playerClubs;
+                    systemPrompt += `\n- Player's clubs: Driver ${clubs['Driver']}y, 7i ${clubs['7 Iron']}y, PW ${clubs['Pitching Wedge']}y`;
+                }
 
                 return systemPrompt;
             }
@@ -1466,7 +1428,6 @@ Current Game State:`;
                 document.getElementById('voiceOrb').addEventListener('click', () => this.handleVoice());
                 document.getElementById('statsBtn').addEventListener('click', () => this.speakStats());
                 document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
-                document.getElementById('insightsBtn').addEventListener('click', () => this.speakInsights());
                 
                 // 🎧 SHOKZ BUTTON INTEGRATION
                 // Your Shokz play/pause button controls the microphone!
@@ -1546,21 +1507,31 @@ Current Game State:`;
                 
                 // Request GPS permission
                 const gpsGranted = await this.gps.requestPermission();
+                if (gpsGranted) {
+                    this.gps.startTracking((location) => {
+                        this.updateDisplay();
+                    });
+                }
                 
-                // Speak welcome message
+                // AI-driven conversational setup
+                this.setupMode = 'ai_setup';
+                
+                // Check if we have clubs configured already
+                const hasCustomClubs = this.storage.data.profile.clubDistances['Driver'] !== 250 || 
+                                        this.storage.data.profile.clubDistances['7 Iron'] !== 150;
+                
+                let setupPrompt = '';
+                if (hasCustomClubs) {
+                    setupPrompt = "Hey, welcome back! I've got your clubs dialed in. What course are we playing today?";
+                } else {
+                    setupPrompt = "Hey! I'm your caddie. Before we tee off, let's get to know your game. What course are we playing today, and do you want to set up your club distances?";
+                }
+                
                 try {
-                    const aiStatus = this.ai.hasValidKey() ? "AI is ready!" : "AI disabled (no key).";
-                    if (gpsGranted) {
-                        this.gps.startTracking((location) => {
-                            this.updateDisplay();
-                        });
-                        await this.voice.speak(`Hey! GPS is active. ${aiStatus} I'm your caddie. Say 'set up clubs' to configure distances, or tell me what course we're playing.`);
-                    } else {
-                        await this.voice.speak(`Hey! ${aiStatus} I'm your caddie. For best results, enable GPS in your settings. Say 'set up clubs' to configure distances, or tell me what course we're playing.`);
-                    }
+                    await this.voice.speak(setupPrompt);
                 } catch (error) {
                     console.error('Speech error on start:', error);
-                    document.getElementById('caddieMessage').textContent = "Voice not working. Check permissions and reload.";
+                    document.getElementById('caddieMessage').textContent = setupPrompt;
                 }
                 
                 // Start continuous listening mode
@@ -1574,8 +1545,6 @@ Current Game State:`;
                 } else {
                     await this.voice.speak("Tap the microphone to enable voice control.");
                 }
-                
-                this.setupMode = 'awaiting_course';
             }
 
             async handleVoice() {
@@ -1617,26 +1586,81 @@ Current Game State:`;
                 
                 // ==========================================
                 // AI-POWERED INTELLIGENT RESPONSES
-                // Route questions to Claude AI
+                // EVERYTHING goes through AI by default
+                // Only specific game commands bypass AI
                 // ==========================================
                 
                 if (this.useAI && this.ai.hasValidKey()) {
-                    // Questions that should go to AI instead of rules
-                    const aiTriggers = [
-                        'what is', 'explain', 'tell me about', 'how do', 'how does',
-                        'why', 'vector putting', 'game plan', 'strategy',
-                        'tip', 'advice', 'help me', 'teach', 'learn',
-                        'look up', 'search', 'find', 'research',
-                        'conditions', 'weather', 'course info'
-                    ];
-                    
-                    const shouldUseAI = aiTriggers.some(trigger => lower.includes(trigger));
-                    
-                    // Allow AI in any mode (removed setupMode check)
-                    if (shouldUseAI) {
-                        console.log('🤖 Routing to AI for intelligent response');
+                    // During AI setup phase, route everything to AI
+                    if (this.setupMode === 'ai_setup') {
+                        console.log('🤖 AI Setup mode - routing to Claude');
                         
-                        // Build context for AI
+                        // Check if AI response contains course/hole info to auto-start round
+                        const context = {
+                            currentHole: this.storage.getCurrentHole(),
+                            distance: this.gps.getDistance(),
+                            score: this.storage.data.currentRound?.score,
+                            course: this.storage.data.currentRound?.course,
+                            holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
+                            clubHistory: this.storage.data.clubPerformance,
+                            playerClubs: this.storage.data.profile.clubDistances
+                        };
+                        
+                        // Detect course name and hole number from natural speech
+                        const courseMatch = lower.match(/(?:playing|at|going to)\s+(.+?)(?:\s+(?:starting|hole|today)|$)/i);
+                        const holeMatch = lower.match(/(?:hole|starting on|start on|start at)\s+(\d+)/i);
+                        
+                        if (courseMatch || holeMatch || lower.match(/^\d+$/)) {
+                            // They mentioned a course or hole
+                            if (courseMatch && !this.tempCourseName) {
+                                this.tempCourseName = courseMatch[1].trim();
+                            } else if (!this.tempCourseName && !holeMatch) {
+                                // Assume they said the course name
+                                this.tempCourseName = text;
+                            }
+                            
+                            if (holeMatch || lower.match(/^\d+$/)) {
+                                const holeNum = parseInt((holeMatch ? holeMatch[1] : text.match(/(\d+)/)[1]));
+                                const courseName = this.tempCourseName || 'Unknown Course';
+                                this.storage.startRound(courseName, holeNum);
+                                this.updateDisplay();
+                                this.setupMode = 'playing';
+                                
+                                const aiResponse = await this.ai.ask(
+                                    `I'm starting my round at ${courseName}, hole ${holeNum}. Give me a quick pep talk and ask what I'm hitting off the tee.`,
+                                    context
+                                );
+                                await this.voice.speak(aiResponse);
+                                return;
+                            }
+                        }
+                        
+                        // General AI conversation during setup
+                        const aiResponse = await this.ai.ask(text, context);
+                        await this.voice.speak(aiResponse);
+                        
+                        // Check if AI helped identify course/hole
+                        if (this.tempCourseName && !this.storage.data.currentRound) {
+                            // We have a course but no hole yet - AI will naturally ask
+                        }
+                        return;
+                    }
+                    
+                    // During play, route non-game-commands to AI
+                    const isGameCommand = this.detectClub(text) || 
+                        lower.includes('fairway') || lower.includes('rough') || lower.includes('bunker') || 
+                        lower.includes('green') || lower.includes('fringe') || lower.includes('sand') ||
+                        lower.includes('made it') || lower.includes('holed') || lower.includes('sunk') ||
+                        lower.includes('scored') || lower.includes('on the hole') || lower.includes('for the hole') ||
+                        lower.match(/(\d+)\s*(?:feet|foot|ft)/i) || lower.match(/(\d+)\s*(?:percent|%)/i) ||
+                        lower.includes('left to right') || lower.includes('right to left') ||
+                        lower.includes('uphill') || lower.includes('downhill') ||
+                        lower.includes('stimp') || lower.includes('putt') ||
+                        lower.match(/(\d+)\s*yards?/i) ||
+                        lower.includes('next hole') || lower.includes('new hole');
+                    
+                    if (!isGameCommand) {
+                        console.log('🤖 Routing to AI for conversational response');
                         const context = {
                             currentHole: this.storage.getCurrentHole(),
                             distance: this.gps.getDistance(),
@@ -1726,9 +1750,8 @@ Current Game State:`;
                     }
                 }
 
-                // Setup phase - awaiting course
+                // Setup phase - awaiting course (fallback if AI not available)
                 if (this.setupMode === 'awaiting_course') {
-                    // Don't get stuck - always accept what they said as course name
                     this.tempCourseName = text;
                     await this.voice.speak(`${text}. What hole are we starting on?`);
                     this.setupMode = 'awaiting_hole';
@@ -2353,21 +2376,123 @@ Current Game State:`;
 
             async speakStats() {
                 const round = this.storage.data.currentRound;
-                if (round) {
-                    await this.voice.speak(`You've played ${round.holes.length} holes. Total score ${round.score}.`);
-                } else {
-                    await this.voice.speak("No active round yet.");
+                if (!round || round.holes.length === 0) {
+                    await this.voice.speak("No holes completed yet. Let's get some data first!");
+                    return;
                 }
+                
+                const holesPlayed = round.holes.length;
+                const totalScore = round.score;
+                const par = round.holes.reduce((sum, h) => sum + (h.par || 4), 0);
+                const diff = totalScore - par;
+                const diffStr = diff === 0 ? 'even par' : diff > 0 ? `${diff} over` : `${Math.abs(diff)} under`;
+                
+                // Calculate GIR
+                let greensHit = 0;
+                let totalPutts = 0;
+                let upAndDownAttempts = 0;
+                let upAndDownMade = 0;
+                
+                round.holes.forEach(hole => {
+                    const holePar = hole.par || 4;
+                    const shotsToGreen = hole.shots ? hole.shots.filter(s => s.club !== 'Putter').length : 0;
+                    const putts = hole.shots ? hole.shots.filter(s => s.club === 'Putter').length : 0;
+                    
+                    totalPutts += putts;
+                    
+                    // GIR = reached green in par minus 2 strokes
+                    if (shotsToGreen <= holePar - 2) {
+                        greensHit++;
+                    } else if (hole.finalScore && hole.finalScore <= holePar) {
+                        // Missed green but still made par or better = up and down
+                        upAndDownAttempts++;
+                        upAndDownMade++;
+                    } else if (shotsToGreen > holePar - 2) {
+                        upAndDownAttempts++;
+                    }
+                });
+                
+                const girPercent = Math.round((greensHit / holesPlayed) * 100);
+                const puttsPerHole = (totalPutts / holesPlayed).toFixed(1);
+                const upDownPercent = upAndDownAttempts > 0 ? Math.round((upAndDownMade / upAndDownAttempts) * 100) : 0;
+                
+                let statsMsg = `Through ${holesPlayed} holes, you're ${diffStr}, ${totalScore} total. `;
+                statsMsg += `Greens in regulation: ${girPercent}%, ${greensHit} of ${holesPlayed}. `;
+                statsMsg += `Averaging ${puttsPerHole} putts per hole, ${totalPutts} total. `;
+                if (upAndDownAttempts > 0) {
+                    statsMsg += `Up and downs: ${upAndDownMade} of ${upAndDownAttempts}, ${upDownPercent}%. `;
+                }
+                
+                // Add encouragement via AI
+                if (this.ai.hasValidKey()) {
+                    const context = {
+                        score: totalScore,
+                        holesPlayed,
+                        course: round.course,
+                        girPercent,
+                        puttsPerHole,
+                        upDownPercent
+                    };
+                    const aiComment = await this.ai.ask(
+                        `Quick one-liner coaching comment on my stats so far: ${diffStr}, ${girPercent}% GIR, ${puttsPerHole} putts/hole, ${upDownPercent}% up-and-down. Keep it to one sentence.`,
+                        context
+                    );
+                    statsMsg += aiComment;
+                }
+                
+                await this.voice.speak(statsMsg);
             }
 
             async speakHistory() {
-                const hole = this.storage.getCurrentHole();
-                if (hole && hole.shots.length > 0) {
-                    const clubs = hole.shots.map(s => s.club).join(', ');
-                    await this.voice.speak(`This hole: ${clubs}`);
-                } else {
-                    await this.voice.speak("No shots this hole yet.");
+                const rounds = this.storage.data.rounds;
+                const currentRound = this.storage.data.currentRound;
+                
+                if ((!rounds || rounds.length === 0) && !currentRound) {
+                    await this.voice.speak("No round history yet. Let's build some data!");
+                    return;
                 }
+                
+                let historyMsg = '';
+                
+                // Recent rounds summary
+                const recentRounds = (rounds || []).slice(-5).reverse();
+                if (recentRounds.length > 0) {
+                    historyMsg += `You've played ${rounds.length} total round${rounds.length > 1 ? 's' : ''}. `;
+                    
+                    // Calculate averages across rounds
+                    let totalScores = 0;
+                    let totalHoles = 0;
+                    let totalPutts = 0;
+                    
+                    recentRounds.forEach(round => {
+                        const holes = round.holes || [];
+                        totalScores += round.score || 0;
+                        totalHoles += holes.length;
+                        holes.forEach(h => {
+                            totalPutts += h.shots ? h.shots.filter(s => s.club === 'Putter').length : 0;
+                        });
+                    });
+                    
+                    if (totalHoles > 0) {
+                        const avgScore = (totalScores / recentRounds.length).toFixed(0);
+                        const avgPutts = (totalPutts / totalHoles).toFixed(1);
+                        historyMsg += `Last ${recentRounds.length} rounds: averaging ${avgScore} per round, ${avgPutts} putts per hole. `;
+                    }
+                    
+                    // Last round detail
+                    const last = recentRounds[0];
+                    const lastDate = new Date(last.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    historyMsg += `Most recent: ${last.course}, ${lastDate}, scored ${last.score} over ${last.holes?.length || '?'} holes. `;
+                } else {
+                    historyMsg += "No completed rounds yet. ";
+                }
+                
+                // Current round progress
+                if (currentRound && currentRound.holes.length > 0) {
+                    historyMsg += `Today at ${currentRound.course}: ${currentRound.score} through ${currentRound.holes.length} holes.`;
+                }
+                
+                await this.voice.speak(historyMsg);
             }
 
             async speakInsights() {
