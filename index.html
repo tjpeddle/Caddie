@@ -365,25 +365,22 @@
         
         class ClaudeAI {
             constructor() {
-                // API key stored securely in browser (NOT in code!)
-                this.apiKey = localStorage.getItem('anthropic_api_key') || null;
-                this.endpoint = 'https://api.anthropic.com/v1/messages';
+                // API key is handled server-side by Vercel proxy — no key needed here!
+                this.endpoint = 'https://caddie-proxy-timothy-peddles-projects.vercel.app/api/chat';
                 this.conversationHistory = [];
             }
 
             hasValidKey() {
-                return this.apiKey && this.apiKey.startsWith('sk-ant-');
+                return true; // Always valid — proxy handles the key
             }
 
             setApiKey(key) {
-                this.apiKey = key.trim();
-                localStorage.setItem('anthropic_api_key', this.apiKey);
-                console.log('✅ API key saved securely in browser');
+                // No-op — proxy handles the key
+                console.log('✅ API key handled by server proxy');
             }
 
             clearApiKey() {
-                this.apiKey = null;
-                localStorage.removeItem('anthropic_api_key');
+                // No-op — proxy handles the key
             }
 
             async ask(userMessage, context = {}) {
@@ -402,8 +399,6 @@
                     const response = await fetch(this.endpoint, {
                         method: 'POST',
                         headers: {
-                            'x-api-key': this.apiKey,
-                            'anthropic-version': '2023-06-01',
                             'content-type': 'application/json'
                         },
                         body: JSON.stringify({
@@ -1543,17 +1538,8 @@ Current Game State:`;
                 document.getElementById('welcomeScreen').classList.add('hidden');
                 document.getElementById('mainApp').style.display = 'flex';
                 
-                // Check if API key is set
-                if (!this.ai.hasValidKey()) {
-                    const key = prompt("⚠️ API Key Required\n\nEnter your Anthropic API key to enable AI features.\n\nGet one FREE at: console.anthropic.com\n($5 credit included)\n\nPaste your key below:");
-                    
-                    if (key && key.trim().startsWith('sk-ant-')) {
-                        this.ai.setApiKey(key);
-                        alert("✅ API key saved! AI features enabled.\n\nYour key is stored securely in your browser only.");
-                    } else if (key) {
-                        alert("❌ Invalid key format. Should start with 'sk-ant-'\n\nContinuing without AI...");
-                    }
-                }
+                // API key handled by server proxy — no prompt needed
+                console.log('✅ AI features enabled via server proxy');
                 
                 // iOS REQUIRES user interaction before speech works
                 try {
