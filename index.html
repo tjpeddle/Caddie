@@ -128,10 +128,12 @@
         .conversation {
             width: 100%;
             text-align: center;
-            min-height: 120px;
+            min-height: 80px;
+            max-height: 200px;
             display: flex;
             flex-direction: column;
             gap: 12px;
+            overflow: hidden;
         }
         
         .caddie-speaks {
@@ -143,12 +145,16 @@
             border-radius: 16px;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
+            max-height: 150px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
         .you-said {
             font-size: 0.9rem;
             opacity: 0.6;
             font-family: 'JetBrains Mono', monospace;
+            flex-shrink: 0;
         }
         
         /* Quick Info (hidden - data tracked internally) */
@@ -317,7 +323,127 @@
 
     <script>
         // ==========================================
-        // CLAUDE AI INTEGRATION WITH WEB SEARCH
+        // KEEP APP ALIVE & BLUETOOTH AUDIO LOCK
+        // ==========================================
+        
+        class KeepAlive {
+            constructor() {
+                this.wakeLock = null;
+                this.silentAudio = null;
+                this.noSleepVideo = null;
+            }
+            
+            async start() {
+                // 1. Wake Lock API — prevents screen from sleeping
+                await this.requestWakeLock();
+                
+                // Re-acquire wake lock when page becomes visible again
+                document.addEventListener('visibilitychange', async () => {
+                    if (document.visibilityState === 'visible') {
+                        await this.requestWakeLock();
+                        this.ensureSilentAudio();
+                    }
+                });
+                
+                // 2. Silent audio loop — keeps Bluetooth audio route active
+                this.startSilentAudio();
+                
+                // 3. NoSleep video trick — iOS fallback to prevent sleep
+                this.startNoSleepVideo();
+                
+                console.log('🔒 Keep-alive systems active');
+            }
+            
+            async requestWakeLock() {
+                try {
+                    if ('wakeLock' in navigator) {
+                        this.wakeLock = await navigator.wakeLock.request('screen');
+                        this.wakeLock.addEventListener('release', () => {
+                            console.log('⚠️ Wake lock released');
+                        });
+                        console.log('✅ Wake lock acquired');
+                    }
+                } catch (err) {
+                    console.log('Wake lock not available:', err.message);
+                }
+            }
+            
+            startSilentAudio() {
+                try {
+                    // Create AudioContext to hold Bluetooth route
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    const ctx = new AudioContext();
+                    
+                    // Create a silent oscillator
+                    const oscillator = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    gain.gain.value = 0.001; // Nearly silent
+                    oscillator.connect(gain);
+                    gain.connect(ctx.destination);
+                    oscillator.start();
+                    
+                    this.silentAudio = { ctx, oscillator, gain };
+                    console.log('✅ Silent audio loop active (Bluetooth lock)');
+                } catch (err) {
+                    console.log('Silent audio fallback:', err.message);
+                }
+            }
+            
+            ensureSilentAudio() {
+                if (this.silentAudio?.ctx?.state === 'suspended') {
+                    this.silentAudio.ctx.resume();
+                    console.log('🔄 Resumed silent audio');
+                }
+            }
+            
+            startNoSleepVideo() {
+                try {
+                    // Tiny looping video keeps iOS awake
+                    const video = document.createElement('video');
+                    video.setAttribute('playsinline', '');
+                    video.setAttribute('muted', '');
+                    video.setAttribute('loop', '');
+                    video.style.position = 'fixed';
+                    video.style.top = '-1px';
+                    video.style.left = '-1px';
+                    video.style.width = '1px';
+                    video.style.height = '1px';
+                    video.style.opacity = '0.01';
+                    
+                    // Minimal base64 mp4 (tiny silent video)
+                    video.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAA' +
+                        'NBtZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE0OCByMjYwMSBhMGNkN2' +
+                        'QzIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNSAtIGh0dHA6Ly9' +
+                        '3d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9j';
+                    
+                    document.body.appendChild(video);
+                    
+                    // Play on user interaction
+                    const playVideo = () => {
+                        video.play().catch(() => {});
+                    };
+                    document.addEventListener('click', playVideo, { once: true });
+                    document.addEventListener('touchstart', playVideo, { once: true });
+                    
+                    this.noSleepVideo = video;
+                    console.log('✅ NoSleep video ready');
+                } catch (err) {
+                    console.log('NoSleep video fallback:', err.message);
+                }
+            }
+            
+            stop() {
+                if (this.wakeLock) this.wakeLock.release();
+                if (this.silentAudio) {
+                    this.silentAudio.oscillator.stop();
+                    this.silentAudio.ctx.close();
+                }
+                if (this.noSleepVideo) this.noSleepVideo.remove();
+            }
+        }
+        
+        // ==========================================
+        // CLAUDE AI INTEGRATION
         // ==========================================
         
         class ClaudeAI {
@@ -1358,6 +1484,7 @@ Current Game State:`;
                 this.gps = new GPSTracker();
                 this.vectorPutting = new VectorPuttingCalculator();
                 this.ai = new ClaudeAI(); // 🤖 AI BRAIN!
+                this.keepAlive = new KeepAlive(); // 🔒 Prevent sleep & hold Bluetooth
                 this.useAI = true; // Set to false to use old rule-based mode
                 this.currentPuttData = {
                     distance: null,
@@ -1372,18 +1499,28 @@ Current Game State:`;
             }
 
             setupVisibilityHandling() {
-                // Pause mic when app is backgrounded (swiped away)
+                // Try to keep mic alive even when backgrounded
+                // Only pause if fully hidden for extended time
                 document.addEventListener('visibilitychange', () => {
                     if (document.hidden) {
-                        // App is backgrounded
-                        console.log('App backgrounded - pausing mic');
-                        if (this.voice.continuousMode) {
-                            this.voice.stopContinuousListening();
-                            this.wasListeningBeforeBackground = true;
-                        }
+                        console.log('App backgrounded - keeping mic alive if possible');
+                        // DON'T stop listening immediately - iOS may just be dimming screen
+                        // Set a delayed check instead
+                        this.backgroundTimer = setTimeout(() => {
+                            if (document.hidden && this.voice.continuousMode) {
+                                console.log('Still backgrounded after 30s - pausing mic');
+                                this.voice.stopContinuousListening();
+                                this.wasListeningBeforeBackground = true;
+                            }
+                        }, 30000); // 30 second grace period
                     } else {
                         // App is back in foreground
-                        console.log('App foregrounded - resuming mic');
+                        clearTimeout(this.backgroundTimer);
+                        console.log('App foregrounded - ensuring mic is active');
+                        
+                        // Resume silent audio for Bluetooth
+                        this.keepAlive.ensureSilentAudio();
+                        
                         if (this.wasListeningBeforeBackground && this.setupMode !== 'initial') {
                             // Auto-resume listening
                             setTimeout(() => {
@@ -1394,7 +1531,8 @@ Current Game State:`;
                                     document.getElementById('voiceOrb').classList.add('listening');
                                     document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
                                 }
-                            }, 500); // Small delay to ensure page is fully active
+                                this.wasListeningBeforeBackground = false;
+                            }, 500);
                         }
                     }
                 });
@@ -1512,6 +1650,9 @@ Current Game State:`;
                         this.updateDisplay();
                     });
                 }
+                
+                // Start keep-alive systems (wake lock, Bluetooth audio hold, no-sleep)
+                await this.keepAlive.start();
                 
                 // AI-driven conversational setup
                 this.setupMode = 'ai_setup';
