@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Voice Golf Caddie</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .main-container {
+            width: 100%;
+            max-width: 500px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-top: 20px;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Voice Interface - Main Focus */
+        .voice-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+        }
+        
+        .voice-orb {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #4ade80, #22c55e);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 20px 60px rgba(74, 222, 128, 0.4);
+            position: relative;
+        }
+        
+        .voice-orb::before {
+            content: '';
+            position: absolute;
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            border: 2px solid rgba(74, 222, 128, 0.3);
+            animation: pulse-ring 2s infinite;
+        }
+        
+        @keyframes pulse-ring {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 0.5;
+            }
+        }
+        
+        .voice-orb.listening {
+            animation: listening-pulse 1s infinite;
+            background: radial-gradient(circle at 30% 30%, #ef4444, #dc2626);
+            box-shadow: 0 20px 60px rgba(239, 68, 68, 0.6);
+        }
+        
+        @keyframes listening-pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+        
+        .voice-orb:active {
+            transform: scale(0.95);
+        }
+        
+        .voice-icon {
+            font-size: 4rem;
+        }
+        
+        .conversation {
+            width: 100%;
+            text-align: center;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .caddie-speaks {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            font-weight: 500;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .you-said {
+            font-size: 0.9rem;
+            opacity: 0.6;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Quick Info Display */
+        .info-bar {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .info-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        
+        .info-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.6;
+            margin-bottom: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .info-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Bottom Actions */
+        .bottom-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding-bottom: 20px;
+        }
+        
+        .action-btn {
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .action-btn:active {
+            transform: scale(0.95);
+            background: rgba(74, 222, 128, 0.3);
+        }
+        
+        /* Welcome Screen */
+        .welcome-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 40px;
+        }
+        
+        .welcome-content {
+            text-align: center;
+            max-width: 400px;
+        }
+        
+        .welcome-content h1 {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .welcome-content p {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            opacity: 0.8;
+            margin-bottom: 40px;
+        }
+        
+        .start-btn {
+            padding: 20px 40px;
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            border: none;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #0f2027;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(74, 222, 128, 0.4);
+        }
+        
+        .start-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        /* Setup Mode */
+        .setup-mode {
+            display: none;
+            text-align: center;
+        }
+        
+        .setup-mode.active {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .setup-prompt {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Welcome Screen -->
+    <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-content">
+            <h1>⛳ Voice Caddie</h1>
+            <p>
+                Put your phone in your bag.<br>
+                Just talk to me like a real caddie.<br>
+                I'll remember everything.
+            </p>
+            <button class="start-btn" id="startBtn">Let's Go</button>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="main-container" id="mainApp" style="display: none;">
+        
+        <!-- Header -->
+        <div class="header">
+            <h1>⛳ CADDIE</h1>
+            <div class="subtitle" id="courseInfo">Ready when you are</div>
+        </div>
+        
+        <!-- Quick Info Bar -->
+        <div class="info-bar">
+            <div class="info-card">
+                <div class="info-label">Hole</div>
+                <div class="info-value" id="currentHole">--</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Distance</div>
+                <div class="info-value" id="distanceDisplay">--</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Score</div>
+                <div class="info-value" id="scoreDisplay">0</div>
+            </div>
+        </div>
+        
+        <!-- Voice Interface -->
+        <div class="voice-section">
+            <button class="voice-orb" id="voiceOrb">
+                <span class="voice-icon">🎤</span>
+            </button>
+            
+            <div class="conversation">
+                <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: #4ade80;" id="voiceStatus">
+                    Tap mic to start
+                </div>
+                <div class="caddie-speaks" id="caddieMessage">
+                    Put your phone in your bag and just talk
+                </div>
+                <div class="you-said" id="yourMessage"></div>
+                
+                <!-- Simplified help -->
+                <div style="font-size: 0.7rem; opacity: 0.5; margin-top: 10px; text-align: center;">
+                    Tap mic = mute/unmute (like your Shokz button)
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bottom Actions -->
+        <div class="bottom-actions">
+            <button class="action-btn" id="statsBtn">📈 My Game</button>
+            <button class="action-btn" id="historyBtn">🏌️ History</button>
+            <button class="action-btn" id="insightsBtn">💭 Ask AI</button>
+        </div>
+        
+    </div>
+
+    <script>
+        // ==========================================
+        // CLAUDE AI INTEGRATION WITH WEB SEARCH
+        // ==========================================
+        
+        class ClaudeAI {
+            constructor() {
+                // API key stored securely in browser (NOT in code!)
+                this.apiKey = localStorage.getItem('anthropic_api_key') || null;
+                this.endpoint = 'https://api.anthropic.com/v1/messages';
+                this.conversationHistory = [];
+            }
+
+            hasValidKey() {
+                return this.apiKey && this.apiKey.startsWith('sk-ant-');
+            }
+
+            setApiKey(key) {
+                this.apiKey = key.trim();
+                localStorage.setItem('anthropic_api_key', this.apiKey);
+                console.log('✅ API key saved securely in browser');
+            }
+
+            clearApiKey() {
+                this.apiKey = null;
+                localStorage.removeItem('anthropic_api_key');
+            }
+
+            async ask(userMessage, context = {}) {
+                console.log('🤖 Asking Claude AI:', userMessage);
+                
+                // Build system context from game state
+                const systemContext = this.buildContext(context);
+                
+                // Add user message to conversation
+                this.conversationHistory.push({
+                    role: 'user',
+                    content: userMessage
+                });
+                
+                try {
+                    const response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'x-api-key': this.apiKey,
+                            'anthropic-version': '2023-06-01',
+                            'content-type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-sonnet-4-20250514', // Latest Sonnet model
+                            max_tokens: 500,
+                            system: systemContext,
+                            messages: this.conversationHistory.slice(-10), // Last 10 for context
+                            tools: [
+                                {
+                                    type: "web_search_20250305",
+                                    name: "web_search"
+                                }
+                            ]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('API Error Response:', errorText);
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('✅ Claude AI responded');
+                    
+                    // Extract text response
+                    let aiResponse = '';
+                    for (const block of data.content) {
+                        if (block.type === 'text') {
+                            aiResponse += block.text;
+                        }
+                    }
+                    
+                    // Add to conversation history
+                    this.conversationHistory.push({
+                        role: 'assistant',
+                        content: aiResponse
+                    });
+                    
+                    return aiResponse;
+                    
+                } catch (error) {
+                    console.error('❌ Claude API Error:', error);
+                    console.error('Error details:', error.message);
+                    console.error('API key starts with:', this.apiKey.substring(0, 20));
+                    
+                    // User-friendly error messages with more detail
+                    if (error.message.includes('401')) {
+                        return `API key error (401). Your key might be wrong. It starts with: ${this.apiKey.substring(0, 15)}... Check if that matches your Anthropic console.`;
+                    } else if (error.message.includes('429')) {
+                        return "Whoa, slow down! I need a second to think. Try again.";
+                    } else if (this.apiKey === 'YOUR_API_KEY_HERE') {
+                        return "Hey! You need to add your Anthropic API key first. Get one at console.anthropic.com (you get $5 free credit!).";
+                    } else if (error.message.includes('Failed to fetch')) {
+                        return `Network error. Check your internet connection. Error: ${error.message}`;
+                    } else {
+                        return `API error: ${error.message}. Check console logs for details.`;
+                    }
+                }
+            }
+
+            buildContext(context) {
+                const { 
+                    currentHole, 
+                    distance, 
+                    score, 
+                    course,
+                    holesPlayed,
+                    clubHistory,
+                    conditions
+                } = context;
+                
+                let systemPrompt = `You are an expert golf caddie and coach with deep knowledge of:
+- Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
+- Golf strategy, course management, and shot selection
+- Club performance analysis and recommendations
+- Mental game, confidence building, and coaching
+- Golf rules, etiquette, and technique
+
+Be conversational, supportive, and concise (2-3 sentences unless explaining concepts).
+Use web search when asked about current conditions, specific courses, weather, or recent updates.
+
+Current Game State:`;
+
+                if (course) systemPrompt += `\n- Course: ${course}`;
+                if (currentHole) {
+                    systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}, ${currentHole.state || 'tee'}`;
+                }
+                if (distance) systemPrompt += `\n- Distance to pin: ${distance} yards`;
+                if (score !== undefined && holesPlayed) {
+                    const par = holesPlayed * 4;
+                    const diff = score - par;
+                    systemPrompt += `\n- Score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed})`;
+                }
+                if (conditions?.windy) systemPrompt += `\n- Wind present`;
+                if (clubHistory) systemPrompt += `\n- Player performance data available`;
+
+                return systemPrompt;
+            }
+
+            resetConversation() {
+                this.conversationHistory = [];
+                console.log('🔄 AI conversation reset');
+            }
+        }
+
+        // Vector Putting Calculation Engine
+        class VectorPuttingCalculator {
+            constructor() {
+                // Gravity Vector Tables based on green speed (Stimpmeter reading)
+                // Values are in inches for different distances and slopes
+                this.gravityVectorTables = {
+                    // Slow greens (Stimp 6-7)
+                    'slow': {
+                        '1%': { 5: 1, 10: 3, 15: 5, 20: 8, 25: 11, 30: 15 },
+                        '2%': { 5: 2, 10: 6, 15: 10, 20: 15, 25: 21, 30: 29 },
+                        '3%': { 5: 3, 10: 9, 15: 16, 20: 24, 25: 33, 30: 44 },
+                        '4%': { 5: 4, 10: 12, 15: 21, 20: 32, 25: 44, 30: 58 },
+                        '5%': { 5: 5, 10: 15, 15: 27, 20: 40, 25: 55, 30: 73 }
+                    },
+                    // Medium greens (Stimp 7.5-8.5)
+                    'medium': {
+                        '1%': { 5: 1, 10: 4, 15: 7, 20: 10, 25: 14, 30: 19 },
+                        '2%': { 5: 3, 10: 7, 15: 13, 20: 20, 25: 28, 30: 37 },
+                        '3%': { 5: 4, 10: 10, 15: 19, 20: 29, 25: 41, 30: 55 },
+                        '4%': { 5: 5, 10: 14, 15: 26, 20: 39, 25: 55, 30: 73 },
+                        '5%': { 5: 6, 10: 18, 15: 32, 20: 49, 25: 69, 30: 92 }
+                    },
+                    // Fast greens (Stimp 9-10)
+                    'fast': {
+                        '1%': { 5: 2, 10: 5, 15: 9, 20: 13, 25: 18, 30: 24 },
+                        '2%': { 5: 3, 10: 9, 15: 17, 20: 26, 25: 36, 30: 48 },
+                        '3%': { 5: 5, 10: 14, 15: 25, 20: 38, 25: 53, 30: 71 },
+                        '4%': { 5: 7, 10: 18, 15: 33, 20: 51, 25: 71, 30: 95 },
+                        '5%': { 5: 8, 10: 23, 15: 42, 20: 64, 25: 89, 30: 119 }
+                    },
+                    // Very fast greens (Stimp 10.5-12)
+                    'veryfast': {
+                        '1%': { 5: 2, 10: 6, 15: 11, 20: 16, 25: 23, 30: 30 },
+                        '2%': { 5: 4, 10: 11, 15: 21, 20: 32, 25: 45, 30: 60 },
+                        '3%': { 5: 6, 10: 17, 15: 31, 20: 48, 25: 67, 30: 89 },
+                        '4%': { 5: 8, 10: 23, 15: 42, 20: 64, 25: 89, 30: 119 },
+                        '5%': { 5: 10, 10: 29, 15: 53, 20: 80, 25: 111, 30: 149 }
+                    }
+                };
+            }
+
+            getGreenSpeedCategory(stimp) {
+                if (stimp < 7.5) return 'slow';
+                if (stimp < 9) return 'medium';
+                if (stimp < 10.5) return 'fast';
+                return 'veryfast';
+            }
+
+            calculateGravityVector(distance, slope, stimp) {
+                const speedCat = this.getGreenSpeedCategory(stimp);
+                const slopeKey = `${Math.round(slope)}%`;
+                
+                // Round distance to nearest 5 feet
+                const distKey = Math.round(distance / 5) * 5;
+                const clampedDist = Math.max(5, Math.min(30, distKey));
+                
+                const table = this.gravityVectorTables[speedCat];
+                if (!table[slopeKey]) {
+                    // Interpolate if exact slope not in table
+                    const nearestSlope = Math.min(5, Math.max(1, Math.round(slope)));
+                    return table[`${nearestSlope}%`][clampedDist] || 10;
+                }
+                
+                return table[slopeKey][clampedDist] || 10;
+            }
+
+            getAimPoint(distance, slope, stimp, breakDirection, uphillDownhill = 'level') {
+                const gravityVector = this.calculateGravityVector(distance, slope, stimp);
+                
+                // Adjust for uphill/downhill (elastic gravity vector)
+                let adjustedVector = gravityVector;
+                if (uphillDownhill === 'uphill') {
+                    adjustedVector = Math.round(gravityVector * 0.85); // Reduce by 15%
+                } else if (uphillDownhill === 'downhill') {
+                    adjustedVector = Math.round(gravityVector * 1.15); // Increase by 15%
+                }
+                
+                // Build the aim instruction
+                let aimDirection = '';
+                if (breakDirection === 'left-to-right' || breakDirection === 'left to right') {
+                    aimDirection = 'left';
+                } else if (breakDirection === 'right-to-left' || breakDirection === 'right to left') {
+                    aimDirection = 'right';
+                }
+                
+                return {
+                    inches: adjustedVector,
+                    direction: aimDirection,
+                    description: this.buildAimDescription(adjustedVector, aimDirection, distance)
+                };
+            }
+
+            buildAimDescription(inches, direction, distance) {
+                if (inches < 2) {
+                    return "Aim at the center of the cup";
+                } else if (inches <= 4) {
+                    return `Aim at the ${direction} edge of the cup`;
+                } else if (inches <= 12) {
+                    return `Aim ${inches} inches ${direction} of center - about ${Math.round(inches / 4.25 * 10) / 10} cup widths`;
+                } else {
+                    const feet = Math.floor(inches / 12);
+                    const remainingInches = inches % 12;
+                    if (remainingInches === 0) {
+                        return `Aim ${feet} foot ${direction} of the hole`;
+                    } else {
+                        return `Aim ${feet} feet ${remainingInches} inches ${direction} of the hole`;
+                    }
+                }
+            }
+        }
+
+        // Storage
+        class CaddieStorage {
+            constructor() {
+                this.key = 'voice_caddie_v2';
+                this.data = this.load();
+            }
+
+            load() {
+                try {
+                    const stored = localStorage.getItem(this.key);
+                    return stored ? JSON.parse(stored) : this.getDefault();
+                } catch (e) {
+                    return this.getDefault();
+                }
+            }
+
+            getDefault() {
+                return {
+                    profile: {
+                        courses: [],
+                        clubDistances: this.getDefaultClubs(),
+                        voiceSpeed: 1.0 // Default normal speed (0.5 = slow, 2.0 = fast)
+                    },
+                    rounds: [],
+                    currentRound: null,
+                    stats: {
+                        totalRounds: 0,
+                        totalShots: 0
+                    }
+                };
+            }
+
+            getDefaultClubs() {
+                return {
+                    'Driver': 250, '3 Wood': 220, '5 Wood': 200, 'Hybrid': 190,
+                    '3 Iron': 200, '4 Iron': 185, '5 Iron': 170, '6 Iron': 160,
+                    '7 Iron': 150, '8 Iron': 140, '9 Iron': 130,
+                    'Pitching Wedge': 120, 'Gap Wedge': 100, 'Sand Wedge': 80, 'Lob Wedge': 60
+                };
+            }
+
+            save() {
+                localStorage.setItem(this.key, JSON.stringify(this.data));
+            }
+
+            startRound(courseName, holeNumber) {
+                this.data.currentRound = {
+                    course: courseName,
+                    date: new Date().toISOString(),
+                    currentHole: {
+                        number: holeNumber,
+                        par: this.estimatePar(null),
+                        shots: [],
+                        state: 'tee'
+                    },
+                    holes: [],
+                    score: 0
+                };
+                
+                if (!this.data.profile.courses.includes(courseName)) {
+                    this.data.profile.courses.push(courseName);
+                }
+                
+                this.save();
+            }
+
+            recordShot(club, distance, context = {}) {
+                if (!this.data.currentRound) return;
+                
+                const shot = {
+                    club,
+                    distance,
+                    timestamp: new Date().toISOString(),
+                    course: this.data.currentRound.course,
+                    hole: this.data.currentRound.currentHole.number,
+                    ...context
+                };
+                
+                this.data.currentRound.currentHole.shots.push(shot);
+                this.data.stats.totalShots++;
+                this.save();
+                
+                // Track club performance
+                this.updateClubStats(club, context);
+            }
+
+            updateClubStats(club, context) {
+                if (!this.data.clubPerformance) {
+                    this.data.clubPerformance = {};
+                }
+                
+                if (!this.data.clubPerformance[club]) {
+                    this.data.clubPerformance[club] = {
+                        totalUses: 0,
+                        distances: [],
+                        results: { green: 0, miss: 0 },
+                        conditions: { wind: 0, noWind: 0 }
+                    };
+                }
+                
+                const stats = this.data.clubPerformance[club];
+                stats.totalUses++;
+                
+                if (context.distance) {
+                    stats.distances.push(context.distance);
+                }
+                
+                if (context.hitGreen) {
+                    stats.results.green++;
+                } else if (context.hitGreen === false) {
+                    stats.results.miss++;
+                }
+                
+                if (context.windy) {
+                    stats.conditions.wind++;
+                } else {
+                    stats.conditions.noWind++;
+                }
+                
+                this.save();
+            }
+
+            getClubHistory(club) {
+                return this.data.clubPerformance?.[club] || null;
+            }
+
+            getCourseHistory(courseName) {
+                const rounds = this.data.rounds.filter(r => 
+                    r.course.toLowerCase().includes(courseName.toLowerCase())
+                );
+                
+                if (rounds.length === 0) return null;
+                
+                const holeStats = {};
+                rounds.forEach(round => {
+                    round.holes?.forEach(hole => {
+                        const key = hole.number;
+                        if (!holeStats[key]) {
+                            holeStats[key] = {
+                                scores: [],
+                                clubs: []
+                            };
+                        }
+                        holeStats[key].scores.push(hole.finalScore || 0);
+                        hole.shots?.forEach(shot => {
+                            holeStats[key].clubs.push(shot.club);
+                        });
+                    });
+                });
+                
+                return {
+                    timesPlayed: rounds.length,
+                    lastPlayed: rounds[rounds.length - 1].date,
+                    holeStats
+                };
+            }
+
+            getSmartRecommendation(distance, conditions = {}) {
+                const baseClub = this.recommendClub(distance);
+                
+                // AI LEARNING SYSTEM
+                const clubHistory = this.getClubHistory(baseClub);
+                if (!clubHistory || clubHistory.totalUses < 3) {
+                    return { club: baseClub, reason: "standard distance" };
+                }
+                
+                // Calculate actual average distance with this club
+                const avgDistance = clubHistory.distances.reduce((a, b) => a + b, 0) / clubHistory.distances.length;
+                
+                // Calculate variance to understand consistency
+                const variance = clubHistory.distances.reduce((sum, d) => sum + Math.pow(d - avgDistance, 2), 0) / clubHistory.distances.length;
+                const stdDev = Math.sqrt(variance);
+                
+                // AI Pattern Recognition: Learn player tendencies
+                const playerTendency = this.analyzeTendency(baseClub, avgDistance, this.data.profile.clubDistances[baseClub]);
+                
+                // Wind pattern learning
+                let windAdjustment = 0;
+                if (conditions.windy && clubHistory.conditions.wind > 2) {
+                    // AI learns how much wind affects THIS player
+                    const windShots = clubHistory.distances.filter((_, i) => 
+                        this.data.shots?.[i]?.windy === true
+                    );
+                    if (windShots.length > 0) {
+                        const windAvg = windShots.reduce((a, b) => a + b, 0) / windShots.length;
+                        windAdjustment = avgDistance - windAvg;
+                    } else {
+                        windAdjustment = avgDistance * 0.1; // Default 10% loss
+                    }
+                }
+                
+                // AI Decision: Should we club up/down?
+                let recommendation = baseClub;
+                let reason = "";
+                
+                const effectiveDistance = avgDistance - windAdjustment;
+                const targetDistance = distance;
+                const gap = targetDistance - effectiveDistance;
+                
+                // High variance = inconsistent, be conservative
+                const consistencyFactor = stdDev > 10 ? 1.2 : 1.0;
+                
+                if (Math.abs(gap) > 5 * consistencyFactor) {
+                    const clubs = Object.keys(this.data.profile.clubDistances);
+                    const currentIndex = clubs.findIndex(c => c === baseClub);
+                    
+                    if (gap > 5) {
+                        // Need more club
+                        if (currentIndex > 0) {
+                            recommendation = clubs[currentIndex - 1];
+                            reason = conditions.windy 
+                                ? `club up for wind - you lose ${Math.round(windAdjustment)} yards in wind`
+                                : `your ${baseClub} averages ${Math.round(avgDistance)}, need more club`;
+                        }
+                    } else if (gap < -5) {
+                        // Need less club
+                        if (currentIndex < clubs.length - 1) {
+                            recommendation = clubs[currentIndex + 1];
+                            reason = `your ${baseClub} averages ${Math.round(avgDistance)}, that's too much`;
+                        }
+                    }
+                }
+                
+                // AI Insight: Consistency warning
+                if (!reason && stdDev > 15) {
+                    reason = `you're inconsistent with ${baseClub} - varies ${Math.round(stdDev)} yards`;
+                } else if (!reason && stdDev < 8) {
+                    reason = `you're dialed in with ${baseClub}`;
+                } else if (!reason) {
+                    reason = `${baseClub} averages ${Math.round(avgDistance)} for you`;
+                }
+                
+                return { club: recommendation, reason, confidence: this.calculateConfidence(clubHistory, stdDev) };
+            }
+
+            analyzeTendency(club, avgActual, baseline) {
+                const diff = avgActual - baseline;
+                if (Math.abs(diff) < 3) return 'accurate';
+                if (diff > 0) return 'long';
+                return 'short';
+            }
+
+            calculateConfidence(history, stdDev) {
+                // AI confidence score based on data quality
+                const sampleSize = history.totalUses;
+                const consistencyScore = Math.max(0, 100 - stdDev * 5);
+                const dataScore = Math.min(100, sampleSize * 10);
+                return Math.round((consistencyScore + dataScore) / 2);
+            }
+
+            // AI Predictive Analytics: Course-specific patterns
+            getCourseInsights(courseName, holeNumber) {
+                const history = this.getCourseHistory(courseName);
+                if (!history || !history.holeStats[holeNumber]) return null;
+                
+                const holeData = history.holeStats[holeNumber];
+                const scores = holeData.scores;
+                const clubs = holeData.clubs;
+                
+                // AI Pattern Detection
+                const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+                const bestScore = Math.min(...scores);
+                const worstScore = Math.max(...scores);
+                
+                // Find most successful club on this hole
+                const clubFrequency = {};
+                clubs.forEach(club => {
+                    clubFrequency[club] = (clubFrequency[club] || 0) + 1;
+                });
+                const mostUsedClub = Object.entries(clubFrequency)
+                    .sort((a, b) => b[1] - a[1])[0]?.[0];
+                
+                // AI Insight Generation
+                return {
+                    avgScore: Math.round(avgScore * 10) / 10,
+                    bestScore,
+                    worstScore,
+                    mostUsedClub,
+                    timesPlayed: scores.length,
+                    trend: this.detectTrend(scores)
+                };
+            }
+
+            detectTrend(scores) {
+                if (scores.length < 3) return 'insufficient data';
+                const recent = scores.slice(-3);
+                const earlier = scores.slice(0, -3);
+                if (earlier.length === 0) return 'improving';
+                
+                const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+                const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length;
+                
+                if (recentAvg < earlierAvg - 0.5) return 'improving';
+                if (recentAvg > earlierAvg + 0.5) return 'struggling';
+                return 'consistent';
+            }
+
+            // AI Performance Tracking
+            getPerformanceInsights() {
+                const insights = [];
+                
+                // Analyze each club's performance
+                Object.entries(this.data.clubPerformance || {}).forEach(([club, stats]) => {
+                    if (stats.totalUses < 5) return;
+                    
+                    const avgDist = stats.distances.reduce((a, b) => a + b, 0) / stats.distances.length;
+                    const baseline = this.data.profile.clubDistances[club];
+                    const diff = avgDist - baseline;
+                    
+                    // Green hit rate
+                    const total = stats.results.green + stats.results.miss;
+                    const girRate = total > 0 ? (stats.results.green / total * 100) : 0;
+                    
+                    if (Math.abs(diff) > 8) {
+                        insights.push({
+                            type: 'distance_gap',
+                            club,
+                            message: `Your ${club} goes ${Math.round(avgDist)} yards, not ${baseline}. Update your baseline.`,
+                            priority: 'high'
+                        });
+                    }
+                    
+                    if (girRate < 40 && total > 5) {
+                        insights.push({
+                            type: 'accuracy',
+                            club,
+                            message: `You're only hitting ${Math.round(girRate)}% of greens with ${club}. Practice needed.`,
+                            priority: 'medium'
+                        });
+                    }
+                    
+                    if (girRate > 70 && total > 5) {
+                        insights.push({
+                            type: 'strength',
+                            club,
+                            message: `${club} is money! ${Math.round(girRate)}% greens hit.`,
+                            priority: 'low'
+                        });
+                    }
+                });
+                
+                return insights.sort((a, b) => {
+                    const priority = { high: 3, medium: 2, low: 1 };
+                    return priority[b.priority] - priority[a.priority];
+                });
+            }
+
+            completeHole(score) {
+                if (!this.data.currentRound) return;
+                
+                this.data.currentRound.currentHole.finalScore = score;
+                this.data.currentRound.holes.push({...this.data.currentRound.currentHole});
+                this.data.currentRound.score += score;
+                this.save();
+            }
+
+            nextHole() {
+                if (!this.data.currentRound) return;
+                
+                const nextNum = parseInt(this.data.currentRound.currentHole.number) + 1;
+                this.data.currentRound.currentHole = {
+                    number: nextNum,
+                    par: this.estimatePar(null),
+                    shots: [],
+                    state: 'tee'
+                };
+                this.save();
+            }
+
+            estimatePar(distance) {
+                if (!distance) return 4;
+                if (distance > 350) return 5;
+                if (distance < 200) return 3;
+                return 4;
+            }
+
+            getCurrentHole() {
+                return this.data.currentRound?.currentHole;
+            }
+
+            recommendClub(distance) {
+                const clubs = this.data.profile.clubDistances;
+                let bestClub = 'Lob Wedge';
+                let minDiff = 999;
+
+                for (let club in clubs) {
+                    const diff = clubs[club] - distance;
+                    if (diff >= -10 && diff < minDiff) {
+                        bestClub = club;
+                        minDiff = diff;
+                    }
+                }
+
+                return bestClub;
+            }
+        }
+
+        // Voice Interface
+        class VoiceCaddie {
+            constructor() {
+                this.recognition = null;
+                this.synthesis = window.speechSynthesis;
+                this.isListening = false;
+                this.continuousMode = false;
+                this.isSpeaking = false;
+                this.setupRecognition();
+                
+                // Fix for iOS - load voices
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.onvoiceschanged = () => {
+                        this.voices = window.speechSynthesis.getVoices();
+                    };
+                }
+            }
+
+            setupRecognition() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                    this.recognition = new SpeechRecognition();
+                    this.recognition.continuous = true; // Continuous listening
+                    this.recognition.interimResults = false;
+                    this.recognition.lang = 'en-US';
+                    this.recognition.maxAlternatives = 1;
+                }
+            }
+
+            async speak(text, customRate = null) {
+                console.log('🗣️ Caddie speaking:', text);
+                document.getElementById('caddieMessage').textContent = text;
+                
+                // Set speaking flag BEFORE any async operations
+                this.isSpeaking = true;
+                
+                return new Promise((resolve) => {
+                    // Cancel any ongoing speech
+                    if (this.synthesis.speaking) {
+                        this.synthesis.cancel();
+                    }
+                    
+                    // Small delay for iOS
+                    setTimeout(() => {
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        
+                        // Use custom rate or get from storage
+                        const savedRate = window.app?.storage?.data?.profile?.voiceSpeed || 1.0;
+                        utterance.rate = customRate || savedRate;
+                        utterance.pitch = 1;
+                        utterance.volume = 1;
+                        
+                        // Use a more reliable voice on iOS if available
+                        const voices = window.speechSynthesis.getVoices();
+                        const preferredVoice = voices.find(v => v.lang.startsWith('en-US')) || voices[0];
+                        if (preferredVoice) {
+                            utterance.voice = preferredVoice;
+                        }
+                        
+                        utterance.onstart = () => {
+                            this.isSpeaking = true;
+                            console.log('▶️ Started speaking at rate:', utterance.rate);
+                        };
+                        
+                        utterance.onend = () => {
+                            console.log('⏹️ Finished speaking');
+                            // Small delay before allowing input again
+                            setTimeout(() => {
+                                this.isSpeaking = false;
+                                console.log('✅ Ready for input');
+                            }, 500); // 500ms buffer after speech ends
+                            resolve();
+                        };
+                        
+                        utterance.onerror = (event) => {
+                            console.error('❌ Speech error:', event);
+                            this.isSpeaking = false;
+                            resolve(); // Resolve anyway to not block
+                        };
+                        
+                        try {
+                            this.synthesis.speak(utterance);
+                        } catch (error) {
+                            console.error('❌ Speak error:', error);
+                            this.isSpeaking = false;
+                            resolve();
+                        }
+                    }, 100); // 100ms delay helps iOS
+                });
+            }
+
+            startContinuousListening(onResult) {
+                if (!this.recognition) {
+                    console.error('Speech recognition not available');
+                    return false;
+                }
+
+                this.recognition.onresult = (event) => {
+                    const last = event.results.length - 1;
+                    const transcript = event.results[last][0].transcript.trim();
+                    const confidence = event.results[last][0].confidence;
+                    console.log('🎤 Heard:', transcript, '(confidence:', confidence, ')');
+                    document.getElementById('yourMessage').textContent = `You: "${transcript}"`;
+                    
+                    // Don't process if caddie is speaking OR if transcript is empty
+                    if (!this.isSpeaking && transcript.length > 0) {
+                        console.log('✅ Processing command:', transcript);
+                        onResult(transcript);
+                    } else if (this.isSpeaking) {
+                        console.log('⏸️ Caddie is speaking, ignoring input');
+                    } else {
+                        console.log('⚠️ Empty transcript, ignoring');
+                    }
+                };
+
+                this.recognition.onerror = (event) => {
+                    console.error('🔴 Recognition error:', event.error);
+                    if (event.error === 'not-allowed') {
+                        document.getElementById('caddieMessage').textContent = 
+                            'Microphone permission needed. Check Settings > Safari > Microphone.';
+                        document.getElementById('voiceStatus').textContent = '🔇 Mic permission denied';
+                    } else if (event.error === 'no-speech') {
+                        console.log('⚪ No speech detected, continuing...');
+                        // Don't stop for no-speech in continuous mode
+                        return;
+                    } else if (event.error === 'aborted') {
+                        console.log('⚪ Recognition aborted, restarting...');
+                    } else {
+                        console.log('⚠️ Other error:', event.error, '- attempting restart');
+                    }
+                };
+
+                this.recognition.onend = () => {
+                    console.log('🔵 Recognition ended');
+                    // Auto-restart if in continuous mode
+                    if (this.continuousMode) {
+                        console.log('🔄 Auto-restarting recognition...');
+                        setTimeout(() => {
+                            if (this.continuousMode) { // Double-check we're still in continuous mode
+                                try {
+                                    this.recognition.start();
+                                    console.log('✅ Recognition restarted');
+                                } catch (e) {
+                                    if (e.message.includes('already started')) {
+                                        console.log('⚪ Already running, no restart needed');
+                                    } else {
+                                        console.error('❌ Restart failed:', e.message);
+                                    }
+                                }
+                            }
+                        }, 300); // Increased delay for iOS
+                    }
+                };
+
+                this.recognition.onstart = () => {
+                    console.log('🟢 Recognition started');
+                };
+
+                try {
+                    this.recognition.start();
+                    this.continuousMode = true;
+                    this.isListening = true;
+                    console.log('🎙️ Continuous listening activated');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Could not start continuous listening:', error);
+                    return false;
+                }
+            }
+
+            stopContinuousListening() {
+                this.continuousMode = false;
+                this.isListening = false;
+                if (this.recognition) {
+                    this.recognition.stop();
+                }
+            }
+
+            // Keep the old listen method for backwards compatibility
+            listen() {
+                return new Promise((resolve, reject) => {
+                    if (!this.recognition) {
+                        reject('Speech recognition not available');
+                        return;
+                    }
+
+                    const tempRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                    tempRecognition.continuous = false;
+                    tempRecognition.interimResults = false;
+                    tempRecognition.lang = 'en-US';
+
+                    tempRecognition.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript;
+                        document.getElementById('yourMessage').textContent = `You: "${transcript}"`;
+                        resolve(transcript);
+                    };
+
+                    tempRecognition.onerror = (event) => {
+                        if (event.error === 'not-allowed') {
+                            reject('Microphone access denied. Please allow microphone in your browser settings.');
+                        } else if (event.error === 'no-speech') {
+                            reject('No speech detected');
+                        } else {
+                            reject(event.error);
+                        }
+                    };
+
+                    try {
+                        tempRecognition.start();
+                    } catch (error) {
+                        reject('Could not start listening');
+                    }
+                });
+            }
+        }
+
+        // GPS Simulator
+        // Real GPS Tracking System
+        class GPSTracker {
+            constructor() {
+                this.currentLocation = null;
+                this.pinLocation = null;
+                this.lastShotLocation = null;
+                this.watchId = null;
+                this.isTracking = false;
+            }
+
+            async requestPermission() {
+                if (!('geolocation' in navigator)) {
+                    console.error('❌ GPS not supported on this device');
+                    return false;
+                }
+
+                try {
+                    // Request location permission
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 0
+                        });
+                    });
+
+                    console.log('✅ GPS permission granted');
+                    this.currentLocation = {
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude,
+                        altitude: position.coords.altitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    return true;
+                } catch (error) {
+                    console.error('❌ GPS permission denied:', error);
+                    return false;
+                }
+            }
+
+            startTracking(onUpdate) {
+                if (this.isTracking) return;
+
+                this.watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        this.currentLocation = {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude,
+                            altitude: position.coords.altitude,
+                            accuracy: position.coords.accuracy
+                        };
+                        
+                        console.log('📍 GPS Update:', this.currentLocation);
+                        
+                        if (onUpdate) {
+                            onUpdate(this.currentLocation);
+                        }
+                    },
+                    (error) => {
+                        console.error('⚠️ GPS error:', error.message);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 5000,
+                        maximumAge: 0
+                    }
+                );
+
+                this.isTracking = true;
+                console.log('🛰️ GPS tracking started');
+            }
+
+            stopTracking() {
+                if (this.watchId !== null) {
+                    navigator.geolocation.clearWatch(this.watchId);
+                    this.watchId = null;
+                    this.isTracking = false;
+                    console.log('⏹️ GPS tracking stopped');
+                }
+            }
+
+            setPinLocation(lat, lon) {
+                this.pinLocation = { lat, lon };
+                console.log('📍 Pin set at:', this.pinLocation);
+            }
+
+            getDistance() {
+                if (!this.currentLocation || !this.pinLocation) {
+                    return 385; // Default if no GPS
+                }
+
+                // Calculate distance to pin in yards
+                const distance = this.calculateDistance(
+                    this.currentLocation.lat,
+                    this.currentLocation.lon,
+                    this.pinLocation.lat,
+                    this.pinLocation.lon
+                );
+
+                return Math.round(distance);
+            }
+
+            calculateDistance(lat1, lon1, lat2, lon2) {
+                // Haversine formula for distance between two GPS points
+                const R = 6371e3; // Earth radius in meters
+                const φ1 = lat1 * Math.PI / 180;
+                const φ2 = lat2 * Math.PI / 180;
+                const Δφ = (lat2 - lat1) * Math.PI / 180;
+                const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                          Math.cos(φ1) * Math.cos(φ2) *
+                          Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+                const meters = R * c;
+                const yards = meters * 1.09361; // Convert to yards
+
+                return yards;
+            }
+
+            recordShotStart() {
+                // Record position before shot
+                if (this.currentLocation) {
+                    this.lastShotLocation = { ...this.currentLocation };
+                    console.log('📸 Shot position recorded');
+                }
+            }
+
+            getLastShotDistance() {
+                // Calculate how far the ball traveled
+                if (!this.lastShotLocation || !this.currentLocation) {
+                    return null;
+                }
+
+                const distance = this.calculateDistance(
+                    this.lastShotLocation.lat,
+                    this.lastShotLocation.lon,
+                    this.currentLocation.lat,
+                    this.currentLocation.lon
+                );
+
+                return Math.round(distance);
+            }
+
+            // Compatibility methods for existing code
+            moveCloser(yards) {
+                // No longer needed with real GPS, but keep for compatibility
+                console.log('⚠️ moveCloser called (ignored with real GPS)');
+            }
+
+            reset(distance = 385) {
+                // Reset pin location (would need user to set new pin)
+                this.pinLocation = null;
+                this.lastShotLocation = null;
+                console.log('🔄 GPS reset');
+            }
+        }
+
+        // Main Caddie App
+        class CaddieApp {
+            constructor() {
+                this.storage = new CaddieStorage();
+                this.voice = new VoiceCaddie();
+                this.gps = new GPSTracker();
+                this.vectorPutting = new VectorPuttingCalculator();
+                this.ai = new ClaudeAI(); // 🤖 AI BRAIN!
+                this.useAI = true; // Set to false to use old rule-based mode
+                this.currentPuttData = {
+                    distance: null,
+                    slope: null,
+                    stimp: 9, // Default medium-fast
+                    breakDirection: null,
+                    uphillDownhill: 'level'
+                };
+                this.setupMode = 'initial'; // initial, playing
+                this.setupEventListeners();
+                this.setupVisibilityHandling();
+            }
+
+            setupVisibilityHandling() {
+                // Pause mic when app is backgrounded (swiped away)
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        // App is backgrounded
+                        console.log('App backgrounded - pausing mic');
+                        if (this.voice.continuousMode) {
+                            this.voice.stopContinuousListening();
+                            this.wasListeningBeforeBackground = true;
+                        }
+                    } else {
+                        // App is back in foreground
+                        console.log('App foregrounded - resuming mic');
+                        if (this.wasListeningBeforeBackground && this.setupMode !== 'initial') {
+                            // Auto-resume listening
+                            setTimeout(() => {
+                                const started = this.voice.startContinuousListening((text) => {
+                                    this.processCommand(text);
+                                });
+                                if (started) {
+                                    document.getElementById('voiceOrb').classList.add('listening');
+                                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                                }
+                            }, 500); // Small delay to ensure page is fully active
+                        }
+                    }
+                });
+
+                // Also handle when app loses focus (iOS-specific)
+                window.addEventListener('blur', () => {
+                    console.log('App lost focus');
+                    if (this.voice.continuousMode) {
+                        this.voice.stopContinuousListening();
+                    }
+                });
+
+                window.addEventListener('focus', () => {
+                    console.log('App gained focus');
+                    if (this.wasListeningBeforeBackground && this.setupMode !== 'initial') {
+                        setTimeout(() => {
+                            const started = this.voice.startContinuousListening((text) => {
+                                this.processCommand(text);
+                            });
+                            if (started) {
+                                document.getElementById('voiceOrb').classList.add('listening');
+                                document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                            }
+                        }, 500);
+                    }
+                });
+            }
+
+            setupEventListeners() {
+                document.getElementById('startBtn').addEventListener('click', () => this.start());
+                document.getElementById('voiceOrb').addEventListener('click', () => this.handleVoice());
+                document.getElementById('statsBtn').addEventListener('click', () => this.speakStats());
+                document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
+                document.getElementById('insightsBtn').addEventListener('click', () => this.speakInsights());
+                
+                // 🎧 SHOKZ BUTTON INTEGRATION
+                // Your Shokz play/pause button controls the microphone!
+                if ('mediaSession' in navigator) {
+                    console.log('🎧 Shokz button integration enabled');
+                    
+                    try {
+                        // Pause button = Mute mic
+                        navigator.mediaSession.setActionHandler('pause', () => {
+                            console.log('🎧 Shokz PAUSE - Muting mic');
+                            this.muteMic();
+                        });
+                        
+                        // Play button = Unmute mic  
+                        navigator.mediaSession.setActionHandler('play', () => {
+                            console.log('🎧 Shokz PLAY - Unmuting mic');
+                            this.unmuteMic();
+                        });
+                        
+                        // Set dummy metadata so media session stays active
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: 'Golf Caddie - Listening',
+                            artist: 'AI Assistant',
+                            album: 'Round in Progress'
+                        });
+                    } catch (error) {
+                        console.log('⚠️ MediaSession setup error (non-critical):', error.message);
+                    }
+                }
+            }
+            
+            muteMic() {
+                if (this.voice.continuousMode) {
+                    this.voice.stopContinuousListening();
+                    document.getElementById('voiceStatus').textContent = '🔇 Muted (Press Shokz to unmute)';
+                    document.getElementById('voiceOrb').classList.remove('listening');
+                    console.log('🔇 Mic muted');
+                }
+            }
+            
+            unmuteMic() {
+                if (!this.voice.continuousMode) {
+                    const started = this.voice.startContinuousListening((text) => {
+                        this.processCommand(text);
+                    });
+                    if (started) {
+                        document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                        document.getElementById('voiceOrb').classList.add('listening');
+                        console.log('🎤 Mic unmuted');
+                    }
+                }
+            }
+            
+            toggleMic() {
+                if (this.voice.continuousMode) {
+                    this.muteMic();
+                } else {
+                    this.unmuteMic();
+                }
+            }
+
+            async start() {
+                document.getElementById('welcomeScreen').classList.add('hidden');
+                document.getElementById('mainApp').style.display = 'flex';
+                
+                // Check if API key is set
+                if (!this.ai.hasValidKey()) {
+                    const key = prompt("⚠️ API Key Required\n\nEnter your Anthropic API key to enable AI features.\n\nGet one FREE at: console.anthropic.com\n($5 credit included)\n\nPaste your key below:");
+                    
+                    if (key && key.trim().startsWith('sk-ant-')) {
+                        this.ai.setApiKey(key);
+                        alert("✅ API key saved! AI features enabled.\n\nYour key is stored securely in your browser only.");
+                    } else if (key) {
+                        alert("❌ Invalid key format. Should start with 'sk-ant-'\n\nContinuing without AI...");
+                    }
+                }
+                
+                // iOS REQUIRES user interaction before speech works
+                try {
+                    const dummyUtterance = new SpeechSynthesisUtterance(' ');
+                    window.speechSynthesis.speak(dummyUtterance);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (error) {
+                    console.log('Audio init:', error);
+                }
+                
+                // Request GPS permission
+                const gpsGranted = await this.gps.requestPermission();
+                
+                // Speak welcome message
+                try {
+                    const aiStatus = this.ai.hasValidKey() ? "AI is ready!" : "AI disabled (no key).";
+                    if (gpsGranted) {
+                        this.gps.startTracking((location) => {
+                            this.updateDisplay();
+                        });
+                        await this.voice.speak(`Hey! GPS is active. ${aiStatus} I'm your caddie. Say 'set up clubs' to configure distances, or tell me what course we're playing.`);
+                    } else {
+                        await this.voice.speak(`Hey! ${aiStatus} I'm your caddie. For best results, enable GPS in your settings. Say 'set up clubs' to configure distances, or tell me what course we're playing.`);
+                    }
+                } catch (error) {
+                    console.error('Speech error on start:', error);
+                    document.getElementById('caddieMessage').textContent = "Voice not working. Check permissions and reload.";
+                }
+                
+                // Start continuous listening mode
+                const started = this.voice.startContinuousListening((text) => {
+                    this.processCommand(text);
+                });
+                
+                if (started) {
+                    document.getElementById('voiceOrb').classList.add('listening');
+                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                } else {
+                    await this.voice.speak("Tap the microphone to enable voice control.");
+                }
+                
+                this.setupMode = 'awaiting_course';
+            }
+
+            async handleVoice() {
+                // Use the new toggle function (same one Shokz uses)
+                this.toggleMic();
+            }
+
+            async autoListen() {
+                // Not needed in continuous mode - already always listening
+            }
+
+            async processCommand(text) {
+                const lower = text.toLowerCase();
+
+                // ==========================================
+                // PRIORITY COMMANDS - ALWAYS CHECK FIRST
+                // These work in ANY mode, even during setup
+                // ==========================================
+                
+                // Club setup - CHECK THIS VERY FIRST
+                if (lower.includes('set up') || lower.includes('setup') || lower.includes('configure') || 
+                    lower.includes('my clubs') || lower.includes('club distances') || 
+                    lower.includes('distances') && (lower.includes('my') || lower.includes('clubs')) ||
+                    lower.includes('input') && lower.includes('clubs')) {
+                    this.setupMode = 'club_setup';
+                    this.clubSetupIndex = 0;
+                    this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
+                    await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
+                    return;
+                }
+                
+                // Start over / Reset
+                if (lower.includes('start over') || lower.includes('restart') || lower.includes('begin again')) {
+                    this.storage.data.currentRound = null;
+                    this.setupMode = 'awaiting_course';
+                    await this.voice.speak("Okay, starting fresh. What course are we playing?");
+                    return;
+                }
+                
+                // ==========================================
+                // AI-POWERED INTELLIGENT RESPONSES
+                // Route questions to Claude AI
+                // ==========================================
+                
+                if (this.useAI && this.ai.hasValidKey()) {
+                    // Questions that should go to AI instead of rules
+                    const aiTriggers = [
+                        'what is', 'explain', 'tell me about', 'how do', 'how does',
+                        'why', 'vector putting', 'game plan', 'strategy',
+                        'tip', 'advice', 'help me', 'teach', 'learn',
+                        'look up', 'search', 'find', 'research',
+                        'conditions', 'weather', 'course info'
+                    ];
+                    
+                    const shouldUseAI = aiTriggers.some(trigger => lower.includes(trigger));
+                    
+                    // Allow AI in any mode (removed setupMode check)
+                    if (shouldUseAI) {
+                        console.log('🤖 Routing to AI for intelligent response');
+                        
+                        // Build context for AI
+                        const context = {
+                            currentHole: this.storage.getCurrentHole(),
+                            distance: this.gps.getDistance(),
+                            score: this.storage.data.currentRound?.score,
+                            course: this.storage.data.currentRound?.course,
+                            holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
+                            conditions: this.storage.getCurrentHole()?.conditions,
+                            clubHistory: this.storage.data.clubPerformance
+                        };
+                        
+                        const aiResponse = await this.ai.ask(text, context);
+                        await this.voice.speak(aiResponse);
+                        return;
+                    }
+                }
+
+                // Voice speed control
+                if (lower.includes('slow down') || lower.includes('slower') || lower.includes('talk slower')) {
+                    const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
+                    const newSpeed = Math.max(0.5, currentSpeed - 0.2);
+                    this.storage.data.profile.voiceSpeed = newSpeed;
+                    this.storage.save();
+                    await this.voice.speak(`Slowing down to ${Math.round(newSpeed * 100)}% speed.`);
+                    return;
+                }
+                
+                if (lower.includes('speed up') || lower.includes('faster') || lower.includes('talk faster')) {
+                    const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
+                    const newSpeed = Math.min(2.0, currentSpeed + 0.2);
+                    this.storage.data.profile.voiceSpeed = newSpeed;
+                    this.storage.save();
+                    await this.voice.speak(`Speeding up to ${Math.round(newSpeed * 100)}% speed.`);
+                    return;
+                }
+                
+                if (lower.includes('normal speed') || lower.includes('regular speed')) {
+                    this.storage.data.profile.voiceSpeed = 1.0;
+                    this.storage.save();
+                    await this.voice.speak(`Back to normal speed.`);
+                    return;
+                }
+                
+                // Set specific speed
+                const speedMatch = text.match(/(?:voice\s+)?speed\s+(\d+(?:\.\d+)?)/i);
+                if (speedMatch) {
+                    let speed = parseFloat(speedMatch[1]);
+                    if (speed > 10) speed = speed / 100;
+                    speed = Math.max(0.5, Math.min(2.0, speed));
+                    this.storage.data.profile.voiceSpeed = speed;
+                    this.storage.save();
+                    await this.voice.speak(`Voice speed set to ${Math.round(speed * 100)}%.`);
+                    return;
+                }
+
+                // ==========================================
+                // MODE-SPECIFIC PROCESSING
+                // ==========================================
+
+                // In club setup mode
+                if (this.setupMode === 'club_setup') {
+                    const distMatch = text.match(/(\d+)/);
+                    if (distMatch) {
+                        const distance = parseInt(distMatch[1]);
+                        const currentClub = this.clubsToSetup[this.clubSetupIndex];
+                        
+                        this.storage.data.profile.clubDistances[currentClub] = distance;
+                        this.storage.save();
+                        
+                        this.clubSetupIndex++;
+                        
+                        if (this.clubSetupIndex < this.clubsToSetup.length) {
+                            await this.voice.speak(`${currentClub}, ${distance} yards. How far does your ${this.clubsToSetup[this.clubSetupIndex]} go?`);
+                        } else {
+                            await this.voice.speak(`Perfect! All clubs configured. Ready to play? What course?`);
+                            this.setupMode = 'awaiting_course';
+                        }
+                        return;
+                    } else if (lower.includes('skip') || lower.includes('done') || lower.includes('nevermind') || lower.includes('finish')) {
+                        await this.voice.speak("Club setup complete. What course are we playing?");
+                        this.setupMode = 'awaiting_course';
+                        return;
+                    } else {
+                        // FALLBACK - Didn't understand, ask again
+                        const currentClub = this.clubsToSetup[this.clubSetupIndex];
+                        await this.voice.speak(`Didn't catch that. How many yards does your ${currentClub} go? Say skip to move on.`);
+                        return;
+                    }
+                }
+
+                // Setup phase - awaiting course
+                if (this.setupMode === 'awaiting_course') {
+                    // Don't get stuck - always accept what they said as course name
+                    this.tempCourseName = text;
+                    await this.voice.speak(`${text}. What hole are we starting on?`);
+                    this.setupMode = 'awaiting_hole';
+                    return;
+                }
+
+                // Setup phase - awaiting hole
+                if (this.setupMode === 'awaiting_hole') {
+                    const holeMatch = text.match(/(\d+)/);
+                    if (holeMatch) {
+                        const hole = holeMatch[1];
+                        this.storage.startRound(this.tempCourseName, hole);
+                        this.updateDisplay();
+                        
+                        const distance = this.gps.getDistance();
+                        this.gps.reset(distance);
+                        
+                        const club = this.storage.recommendClub(distance);
+                        await this.voice.speak(`Hole ${hole}, ${distance} yards. I'd go with ${club}. What are you hitting?`);
+                        this.setupMode = 'playing';
+                        return;
+                    } else {
+                        // FALLBACK - Didn't hear a number, ask again conversationally
+                        await this.voice.speak(`Didn't catch the hole number. Which hole? Just say the number.`);
+                        return;
+                    }
+                }
+
+                // Playing phase
+                if (this.setupMode === 'playing') {
+                    // Distance updates during play
+                    if (lower.includes('yards left') || lower.includes('yards remaining') || 
+                        lower.includes('i have') || lower.includes('got')) {
+                        const yardMatch = text.match(/(\d+)\s*yards?/i);
+                        if (yardMatch) {
+                            const newDist = parseInt(yardMatch[1]);
+                            this.gps.currentDistance = newDist;
+                            this.updateDisplay();
+                            
+                            const recommendation = this.storage.getSmartRecommendation(newDist, {
+                                windy: this.storage.getCurrentHole()?.conditions?.windy
+                            });
+                            
+                            let response = `${newDist} yards. I'd suggest ${recommendation.club}`;
+                            if (recommendation.reason) {
+                                response += ` - ${recommendation.reason}`;
+                            }
+                            response += `. What are you hitting?`;
+                            
+                            await this.voice.speak(response);
+                            return;
+                        }
+                    }
+                    
+                    await this.handleGameCommand(text);
+                    return;
+                }
+                
+                // UNIVERSAL FALLBACK - Should never get here, but if we do...
+                console.log('Fallback triggered. Mode:', this.setupMode, 'Text:', text);
+                await this.voice.speak("Not sure what you meant. Try saying that again, or say start over to reset.");
+            }
+
+            async handleGameCommand(text) {
+                const lower = text.toLowerCase();
+                const hole = this.storage.getCurrentHole();
+                if (!hole) return;
+                
+                // ==========================================
+                // NATURAL LANGUAGE AI - Contextual Understanding
+                // ==========================================
+                
+                // "What can I do here?" - Contextual advice
+                if ((lower.includes('what') && (lower.includes('can i') || lower.includes('should i') || lower.includes('do here'))) ||
+                    lower.includes('what now') || lower.includes('what next')) {
+                    const dist = this.gps.getDistance();
+                    const recommendation = this.storage.getSmartRecommendation(dist, { 
+                        windy: hole.conditions?.windy 
+                    });
+                    
+                    let advice = '';
+                    if (hole.state === 'green') {
+                        const lastProx = hole.lastProximity || 20;
+                        advice = `You're on the green, ${lastProx} feet out. Read the slope and break. Tell me the distance, slope percentage, stimp reading, and which way it breaks.`;
+                    } else if (dist < 50) {
+                        advice = `You've got ${dist} yards. Wedge distance. I'd go ${recommendation.club}. ${recommendation.reason}. Focus on a soft landing.`;
+                    } else if (dist < 150) {
+                        advice = `${dist} yards. Mid-iron range. I'd suggest ${recommendation.club}. ${recommendation.reason}. Pick your target line.`;
+                    } else {
+                        advice = `${dist} yards to the pin. That's ${recommendation.club} for you. ${recommendation.reason}. Trust it and commit.`;
+                    }
+                    
+                    await this.voice.speak(advice);
+                    return;
+                }
+                
+                // Help requests
+                if (lower.includes('help') || lower.includes('how') && lower.includes('work') || 
+                    lower.includes('what do i say') || lower.includes('commands')) {
+                    let helpMsg = '';
+                    if (hole.state === 'green') {
+                        helpMsg = `For putting: say the distance like "15 feet", I'll ask slope percentage, stimp reading, and break direction. I'll calculate your exact aim point. Or say "made it" if you holed out.`;
+                    } else if (hole.state === 'tee') {
+                        helpMsg = `From the tee: just say your club like "driver". After you hit, tell me where it landed - fairway, rough, trees, bunker, or on the green.`;
+                    } else {
+                        helpMsg = `Tell me your lie - fairway, rough, bunker. I'll suggest a club based on your history. Then say what you're hitting.`;
+                    }
+                    await this.voice.speak(helpMsg);
+                    return;
+                }
+                
+                // Distance questions without club
+                if ((lower.includes('how far') || lower.includes('what') && lower.includes('distance') || lower.includes('yardage')) 
+                    && !this.detectClub(text)) {
+                    const dist = this.gps.getDistance();
+                    await this.voice.speak(`${dist} yards to the center of the green.`);
+                    return;
+                }
+                
+                // Club recommendation questions
+                if (lower.includes('what club') || lower.includes('which club') || 
+                    lower.includes('what should i hit') || lower.includes('club should i')) {
+                    const dist = this.gps.getDistance();
+                    const recommendation = this.storage.getSmartRecommendation(dist, { 
+                        windy: hole.conditions?.windy 
+                    });
+                    await this.voice.speak(`For ${dist} yards, I'd go ${recommendation.club}. ${recommendation.reason}.`);
+                    return;
+                }
+                
+                // Score questions
+                if (lower.includes('what') && lower.includes('score') || 
+                    lower.includes('how am i doing') || lower.includes('how many')) {
+                    const currentScore = this.storage.data.currentRound?.score || 0;
+                    const holesPlayed = this.storage.data.currentRound?.holes?.length || 0;
+                    const par = holesPlayed * 4; // Assume par 4s
+                    const diff = currentScore - par;
+                    let status = diff === 0 ? 'even par' : diff > 0 ? `${diff} over` : `${Math.abs(diff)} under`;
+                    await this.voice.speak(`You're ${status}, ${currentScore} total through ${holesPlayed} holes.`);
+                    return;
+                }
+                
+                // Wind detection with proactive recommendation
+                if (lower.includes('wind') || lower.includes('windy') || lower.includes('breezy')) {
+                    hole.conditions = hole.conditions || {};
+                    hole.conditions.windy = true;
+                    const dist = this.gps.getDistance();
+                    const recommendation = this.storage.getSmartRecommendation(dist, { windy: true });
+                    await this.voice.speak(`Got it, windy. For ${dist} yards in wind, I'd go ${recommendation.club}. ${recommendation.reason}.`);
+                    return;
+                }
+                
+                // Query club distances - "what's my 7 iron" or "how far is my driver"
+                if (lower.includes('what') || lower.includes('how far')) {
+                    const clubQuery = this.detectClub(text);
+                    if (clubQuery) {
+                        const distance = this.storage.data.profile.clubDistances[clubQuery];
+                        const history = this.storage.getClubHistory(clubQuery);
+                        
+                        if (history && history.distances.length > 0) {
+                            const avgActual = Math.round(history.distances.reduce((a, b) => a + b, 0) / history.distances.length);
+                            await this.voice.speak(`Your ${clubQuery} is set at ${distance} yards. You've been averaging ${avgActual} yards with it.`);
+                        } else {
+                            await this.voice.speak(`Your ${clubQuery} is set at ${distance} yards.`);
+                        }
+                        return;
+                    }
+                }
+                
+                // Handle club distance setup - "my driver goes 250" or "driver 250"
+                const clubDistancePattern = /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes\s+|is\s+)?(\d+)(?:\s+yards)?/i;
+                const clubDistMatch = text.match(clubDistancePattern);
+                if (clubDistMatch && this.detectClub(clubDistMatch[1])) {
+                    const clubName = this.detectClub(clubDistMatch[1]);
+                    const distance = parseInt(clubDistMatch[2]);
+                    
+                    if (distance >= 50 && distance <= 350) {
+                        this.storage.data.profile.clubDistances[clubName] = distance;
+                        this.storage.save();
+                        await this.voice.speak(`Got it. ${clubName} is ${distance} yards. Anything else?`);
+                        return;
+                    }
+                }
+
+                // Detect club
+                const club = this.detectClub(text);
+                if (club) {
+                    // Record GPS position before shot
+                    this.gps.recordShotStart();
+                    
+                    const distance = this.gps.getDistance();
+                    this.storage.recordShot(club, distance, { 
+                        state: hole.state,
+                        windy: hole.conditions?.windy,
+                        gpsLocation: this.gps.currentLocation
+                    });
+                    
+                    // Handle putter specially
+                    if (club === 'Putter') {
+                        hole.putts = (hole.putts || 0) + 1;
+                        
+                        // Check if they made it
+                        if (lower.includes('made') || lower.includes('in') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained')) {
+                            const totalShots = hole.shots.length;
+                            this.storage.completeHole(totalShots);
+                            
+                            // Track putting stats
+                            if (!this.storage.data.puttingStats) {
+                                this.storage.data.puttingStats = { total: 0, made: 0, byDistance: {} };
+                            }
+                            this.storage.data.puttingStats.made++;
+                            this.storage.data.puttingStats.total++;
+                            
+                            this.storage.nextHole();
+                            this.updateDisplay();
+                            
+                            const nextHole = this.storage.getCurrentHole();
+                            const dist = 385;
+                            this.gps.reset(dist);
+                            
+                            const par = hole.par || 4;
+                            const diff = totalShots - par;
+                            let comment = '';
+                            if (diff <= -2) comment = 'Eagle! Incredible!';
+                            else if (diff === -1) comment = 'Birdie! Nice read!';
+                            else if (diff === 0) comment = 'Par. Solid putting.';
+                            else if (diff === 1) comment = 'Bogey.';
+                            else comment = `${totalShots} on the hole.`;
+                            
+                            // AI Course-Specific Insights
+                            const courseInsights = this.storage.getCourseInsights(
+                                this.storage.data.currentRound.course, 
+                                nextHole.number
+                            );
+                            
+                            let aiInsight = '';
+                            if (courseInsights) {
+                                if (courseInsights.trend === 'improving') {
+                                    aiInsight = ` You're getting better on this hole - trending down from ${Math.round(courseInsights.avgScore)}.`;
+                                } else if (courseInsights.trend === 'struggling') {
+                                    aiInsight = ` This hole's been tough - averaging ${courseInsights.avgScore}.`;
+                                } else {
+                                    aiInsight = ` You usually score ${courseInsights.avgScore} here.`;
+                                }
+                                
+                                if (courseInsights.mostUsedClub) {
+                                    aiInsight += ` Last time you used ${courseInsights.mostUsedClub} off the tee.`;
+                                }
+                            }
+                            
+                            await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards.${aiInsight} What's your tee shot?`);
+                            nextHole.state = 'tee';
+                        } else {
+                            // Missed putt - give lag putting advice
+                            const lastDistance = hole.lastProximity || 20;
+                            const advice = this.getLagPuttAdvice(lastDistance);
+                            await this.voice.speak(advice);
+                        }
+                        return;
+                    }
+                    
+                    // Regular shots (not putter)
+                    const clubDist = this.storage.data.profile.clubDistances[club] || 150;
+                    this.gps.moveCloser(clubDist);
+                    
+                    const newDist = this.gps.getDistance();
+                    this.updateDisplay();
+                    
+                    if (hole.state === 'tee') {
+                        hole.state = 'fairway';
+                        await this.voice.speak(`Nice ${club}. You've got ${newDist} yards left. Where'd it land?`);
+                        // Don't auto-listen - they need to walk to their ball first
+                    } else if (newDist < 30) {
+                        hole.state = 'green';
+                        await this.voice.speak(`${club}. Did you hit the green?`);
+                        // Don't auto-listen - they're walking to green
+                    } else {
+                        await this.voice.speak(`${club}. ${newDist} yards out. What's your lie?`);
+                        // Don't auto-listen - they're assessing their lie
+                    }
+                    return;
+                }
+
+                // Handle putting state triggers
+                if (lower.includes('putt') && !lower.includes('putting wedge')) {
+                    hole.state = 'green';
+                    
+                    // Check if they're saying they made the putt
+                    if (lower.includes('made') || lower.includes('in') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained')) {
+                        const totalShots = hole.shots.length + 1;
+                        this.storage.completeHole(totalShots);
+                        this.storage.nextHole();
+                        this.updateDisplay();
+                        
+                        const nextHole = this.storage.getCurrentHole();
+                        const dist = 385;
+                        this.gps.reset(dist);
+                        
+                        const par = hole.par || 4;
+                        const diff = totalShots - par;
+                        let comment = '';
+                        if (diff <= -2) comment = 'Eagle! What a putt!';
+                        else if (diff === -1) comment = 'Birdie! Great roll!';
+                        else if (diff === 0) comment = 'Par. Good speed.';
+                        else if (diff === 1) comment = 'Bogey.';
+                        else comment = `${totalShots} on the hole.`;
+                        
+                        await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards. What are you hitting?`);
+                        nextHole.state = 'tee';
+                    } else {
+                        await this.voice.speak("How far is the putt?");
+                    }
+                    return;
+                }
+
+                // Handle green reading context
+                if (lower.includes('uphill') || lower.includes('up hill')) {
+                    hole.greenContext = { slope: 'uphill' };
+                    await this.voice.speak("Uphill putt. Add pace, it'll be slower than it looks. How many feet?");
+                    return;
+                }
+
+                if (lower.includes('downhill') || lower.includes('down hill')) {
+                    hole.greenContext = { slope: 'downhill' };
+                    await this.voice.speak("Downhill. Take some off, let gravity help. How many feet?");
+                    return;
+                }
+
+                if (lower.includes('left to right') || lower.includes('left-to-right')) {
+                    hole.greenContext = { break: 'left-to-right' };
+                    await this.voice.speak("Breaking left to right. Aim left of the hole. How far?");
+                    return;
+                }
+
+                if (lower.includes('right to left') || lower.includes('right-to-left')) {
+                    hole.greenContext = { break: 'right-to-left' };
+                    await this.voice.speak("Right to left break. Start it right. How far?");
+                    return;
+                }
+
+                if (lower.includes('fast') && lower.includes('green')) {
+                    hole.greenContext = { speed: 'fast' };
+                    await this.voice.speak("Fast greens today. Smooth stroke, less backswing. Distance?");
+                    return;
+                }
+
+                if (lower.includes('slow') && lower.includes('green')) {
+                    hole.greenContext = { speed: 'slow' };
+                    await this.voice.speak("Slow greens. Be aggressive with your stroke. Distance?");
+                    return;
+                }
+
+                // Handle lies
+                if (lower.includes('fairway')) {
+                    const dist = this.gps.getDistance();
+                    const recommendation = this.storage.getSmartRecommendation(dist, { 
+                        windy: hole.conditions?.windy 
+                    });
+                    
+                    let suggestion = `Good fairway. ${dist} yards. I'd suggest ${recommendation.club}`;
+                    if (recommendation.reason) {
+                        suggestion += ` - ${recommendation.reason}`;
+                    }
+                    suggestion += `. What are you hitting?`;
+                    
+                    await this.voice.speak(suggestion);
+                    return;
+                }
+
+                if (lower.includes('rough') || lower.includes('trees')) {
+                    const dist = this.gps.getDistance();
+                    await this.voice.speak(`In the rough. ${dist} yards. Play it safe. What's your shot?`);
+                    // Don't auto-listen - they're thinking about strategy
+                    return;
+                }
+
+                if (lower.includes('bunker') || lower.includes('sand')) {
+                    await this.voice.speak("In the sand. Get it on the green and give yourself a putt.");
+                    // Don't auto-listen - they're hitting from bunker
+                    return;
+                }
+
+                if (lower.includes('green') || lower.includes('on the green')) {
+                    hole.state = 'green';
+                    await this.voice.speak("Nice! You're on the green. How many feet from the hole?");
+                    // Don't auto-listen - they're walking to green to measure
+                    return;
+                }
+
+                if (lower.includes('fringe') || lower.includes('collar')) {
+                    hole.state = 'green';
+                    await this.voice.speak("On the fringe. You can putt it or chip it. What are you thinking?");
+                    // Don't auto-listen - they're deciding
+                    return;
+                }
+
+                // Handle proximity with Vector Putting calculations
+                const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft)/i);
+                if (feetMatch && hole.state === 'green') {
+                    const feet = parseInt(feetMatch[1]);
+                    hole.lastProximity = feet;
+                    this.currentPuttData.distance = feet;
+                    
+                    await this.voice.speak(`${feet} feet. What's the slope percentage?`);
+                    return;
+                }
+
+                // Handle slope percentage
+                const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
+                if (slopeMatch && this.currentPuttData.distance && !this.currentPuttData.slope) {
+                    const slope = parseInt(slopeMatch[1]);
+                    this.currentPuttData.slope = slope;
+                    
+                    await this.voice.speak(`${slope} percent slope. What's the stimp reading?`);
+                    return;
+                }
+
+                // Handle stimp reading
+                if (text.match(/stimp|speed/i) || (lower.match(/\d/) && this.currentPuttData.slope && !this.currentPuttData.stimp)) {
+                    const stimpMatch = text.match(/(\d+(?:\.\d+)?)/);
+                    if (stimpMatch) {
+                        const stimp = parseFloat(stimpMatch[1]);
+                        if (stimp >= 6 && stimp <= 14) {
+                            this.currentPuttData.stimp = stimp;
+                            
+                            await this.voice.speak(`Stimp ${stimp}. Which way does it break?`);
+                            return;
+                        }
+                    }
+                }
+
+                // Handle break direction
+                if ((lower.includes('left') || lower.includes('right')) && this.currentPuttData.distance && this.currentPuttData.slope) {
+                    let breakDir = '';
+                    let uphillDownhill = 'level';
+                    
+                    if (lower.includes('left to right') || lower.includes('left-to-right')) {
+                        breakDir = 'left-to-right';
+                    } else if (lower.includes('right to left') || lower.includes('right-to-left')) {
+                        breakDir = 'right-to-left';
+                    }
+                    
+                    if (lower.includes('uphill')) {
+                        uphillDownhill = 'uphill';
+                    } else if (lower.includes('downhill')) {
+                        uphillDownhill = 'downhill';
+                    }
+                    
+                    this.currentPuttData.breakDirection = breakDir;
+                    this.currentPuttData.uphillDownhill = uphillDownhill;
+                    
+                    // Calculate and provide aim point!
+                    const aimPoint = this.vectorPutting.getAimPoint(
+                        this.currentPuttData.distance,
+                        this.currentPuttData.slope,
+                        this.currentPuttData.stimp,
+                        breakDir,
+                        uphillDownhill
+                    );
+                    
+                    await this.voice.speak(aimPoint.description + ". Die it 12 inches past.");
+                    
+                    // Reset for next putt
+                    this.currentPuttData = {
+                        distance: null,
+                        slope: null,
+                        stimp: this.currentPuttData.stimp, // Keep stimp for rest of round
+                        breakDirection: null,
+                        uphillDownhill: 'level'
+                    };
+                    return;
+                }
+
+                // Handle score directly
+                if (lower.includes('scored') || (lower.match(/\d+/) && (lower.includes('on the hole') || lower.includes('for the hole')))) {
+                    const scoreMatch = text.match(/(\d+)/);
+                    if (scoreMatch) {
+                        const score = parseInt(scoreMatch[1]);
+                        this.storage.completeHole(score);
+                        this.storage.nextHole();
+                        this.updateDisplay();
+                        
+                        const nextHole = this.storage.getCurrentHole();
+                        const dist = 385;
+                        this.gps.reset(dist);
+                        
+                        const par = hole.par || 4;
+                        const diff = score - par;
+                        let comment = '';
+                        if (diff <= -2) comment = 'Eagle! Wow!';
+                        else if (diff === -1) comment = 'Birdie! Excellent!';
+                        else if (diff === 0) comment = 'Par. Solid.';
+                        else if (diff === 1) comment = 'Bogey.';
+                        else comment = `${score} on the hole.`;
+                        
+                        await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards. What's your play?`);
+                        nextHole.state = 'tee';
+                    }
+                    return;
+                }
+
+                // If on the green and they say a number, assume it's putts
+                if (hole.state === 'green' && lower.match(/\d+/) && (lower.includes('putt') || !club)) {
+                    const putts = parseInt(text.match(/(\d+)/)[1]);
+                    const totalShots = hole.shots.length + putts;
+                    this.storage.completeHole(totalShots);
+                    this.storage.nextHole();
+                    this.updateDisplay();
+                    
+                    const nextHole = this.storage.getCurrentHole();
+                    const dist = 385;
+                    this.gps.reset(dist);
+                    
+                    await this.voice.speak(`Got it. Moving to hole ${nextHole.number}, ${dist} yards.`);
+                    nextHole.state = 'tee';
+                    return;
+                }
+
+                // Default - didn't recognize command
+                if (hole.state === 'green') {
+                    await this.voice.speak("On the green. Tell me the distance in feet, or say you made it.");
+                } else {
+                    await this.voice.speak("What club are you hitting? Or tell me your lie - fairway, rough, bunker.");
+                }
+            }
+
+            getAdvancedPuttingAdvice(feet, context = {}) {
+                // VECTOR PUTTING METHODOLOGY
+                let advice = '';
+                
+                // First, explain what we're doing (Vector Putting style)
+                if (feet <= 3) {
+                    advice = `${feet} feet. Using Vector Putting: aim point is inside the cup. Optimal speed - die it 12 inches past if you miss.`;
+                } else if (feet <= 5) {
+                    advice = `${feet} footer. Vector Putting says aim for optimal terminal velocity - imagine the ball dying 12 inches past the hole.`;
+                } else if (feet <= 10) {
+                    advice = `${feet} feet. This is a precision putt. Find your Zero Break Line - that's the line straight downhill. Your gravity vector will determine your aim point.`;
+                } else if (feet <= 20) {
+                    advice = `${feet} feet. Long putt - focus on getting within the 3-foot circle. Speed control is critical here.`;
+                } else if (feet <= 40) {
+                    advice = `${feet} footer. This is lag putting territory. Visualize a 3-foot circle around the hole. Speed matters more than line.`;
+                } else {
+                    advice = `Really long, ${feet} feet. Approach putt - just get it inside that 3-foot circle. Don't leave yourself a difficult second putt.`;
+                }
+                
+                // Add slope-specific Vector Putting guidance
+                if (context.slope === 'uphill') {
+                    advice += " Uphill - the gravity vector works against you. Hit it firmer to maintain optimal terminal velocity.";
+                } else if (context.slope === 'downhill') {
+                    advice += " Downhill - gravity assists. Less speed needed. Let it die into the hole.";
+                }
+                
+                // Add break context using Zero Break Line concept
+                if (context.break === 'left-to-right') {
+                    advice += " Breaking left to right - your Zero Break Line is diagonal. Aim point is left of center, let the ball curve down to the hole.";
+                } else if (context.break === 'right-to-left') {
+                    advice += " Right to left - Zero Break Line runs diagonal the other way. Aim right, trust the gravity vector.";
+                }
+                
+                // Green speed affects everything (Vector Putting principle)
+                if (context.speed === 'fast') {
+                    advice += " Fast greens - smaller gravity vector. Less break than you think.";
+                } else if (context.speed === 'slow') {
+                    advice += " Slow greens - larger gravity vector. More break than you expect.";
+                }
+                
+                // Distance-specific Vector Putting wisdom
+                if (feet <= 5) {
+                    advice += " Remember: optimal terminal velocity is key. Not too fast, not dying at the hole.";
+                } else if (feet > 10 && feet <= 25) {
+                    advice += " The ball will break more in the final 3 feet as it slows down. Trust your read.";
+                }
+                
+                return advice;
+            }
+
+            getLagPuttAdvice(distance) {
+                // Vector Putting lag putt philosophy
+                if (distance <= 10) {
+                    return "Good lag. Vector Putting principle: always aim for 12 inches past. Never up, never in.";
+                } else if (distance <= 25) {
+                    return "Solid lag putt. In Vector Putting, we think about that 3-foot circle. You're in lag range now.";
+                } else {
+                    return "Great distance control on that long putt. Vector Putting teaches speed over line on putts this long.";
+                }
+            }
+
+            detectClub(text) {
+                const patterns = [
+                    { regex: /\bdriver\b/i, name: 'Driver' },
+                    { regex: /\b3\s*wood\b/i, name: '3 Wood' },
+                    { regex: /\b5\s*wood\b/i, name: '5 Wood' },
+                    { regex: /\bhybrid\b/i, name: 'Hybrid' },
+                    { regex: /\b(\d)\s*iron\b/i, match: (m) => `${m[1]} Iron` },
+                    { regex: /\bpitching\s*wedge\b|\bpw\b/i, name: 'Pitching Wedge' },
+                    { regex: /\bsand\s*wedge\b|\bsw\b/i, name: 'Sand Wedge' },
+                    { regex: /\blob\s*wedge\b|\blw\b/i, name: 'Lob Wedge' },
+                    { regex: /\bgap\s*wedge\b|\bgw\b/i, name: 'Gap Wedge' },
+                    { regex: /\bputter\b/i, name: 'Putter' },
+                ];
+
+                for (let p of patterns) {
+                    const match = text.match(p.regex);
+                    if (match) {
+                        return p.match ? p.match(match) : p.name;
+                    }
+                }
+                return null;
+            }
+
+            updateDisplay() {
+                const round = this.storage.data.currentRound;
+                if (round) {
+                    document.getElementById('currentHole').textContent = round.currentHole.number;
+                    document.getElementById('scoreDisplay').textContent = round.score;
+                    document.getElementById('courseInfo').textContent = round.course;
+                }
+                
+                const dist = this.gps.getDistance();
+                document.getElementById('distanceDisplay').textContent = dist < 100 ? `${dist}y` : Math.round(dist/10)*10;
+            }
+
+            async speakStats() {
+                const round = this.storage.data.currentRound;
+                if (round) {
+                    await this.voice.speak(`You've played ${round.holes.length} holes. Total score ${round.score}.`);
+                } else {
+                    await this.voice.speak("No active round yet.");
+                }
+            }
+
+            async speakHistory() {
+                const hole = this.storage.getCurrentHole();
+                if (hole && hole.shots.length > 0) {
+                    const clubs = hole.shots.map(s => s.club).join(', ');
+                    await this.voice.speak(`This hole: ${clubs}`);
+                } else {
+                    await this.voice.speak("No shots this hole yet.");
+                }
+            }
+
+            async speakInsights() {
+                await this.voice.speak("What would you like to know? Ask me anything about golf, strategy, or Vector Putting.");
+            }
+
+            async openSettings() {
+                const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
+                // Show debug info
+                const debugInfo = `
+Debug Info:
+- Voice speed: ${Math.round(currentSpeed * 100)}%
+- Speech synthesis: ${!!window.speechSynthesis ? 'Yes' : 'No'}
+- Speech recognition: ${!!this.voice.recognition ? 'Yes' : 'No'}
+- Continuous mode: ${this.voice.continuousMode ? 'Yes' : 'No'}
+- Is listening: ${this.voice.isListening ? 'Yes' : 'No'}
+- Is speaking: ${this.voice.isSpeaking ? 'Yes' : 'No'}
+- Setup mode: ${this.setupMode}
+- Current round: ${this.storage.data.currentRound ? 'Active' : 'None'}
+
+Voice Commands:
+- "Slow down" / "Faster"
+- "Voice speed 80" (50-200%)
+- "Normal speed"
+
+Check console (F12) for logs.
+                `.trim();
+                
+                alert(debugInfo);
+                console.log('Full state:', {
+                    storage: this.storage.data,
+                    voice: this.voice,
+                    setupMode: this.setupMode
+                });
+            }
+        }
+
+        // Initialize
+        let app;
+        document.addEventListener('DOMContentLoaded', () => {
+            app = new CaddieApp();
+        });
+    </script>
+</body>
+</html>
