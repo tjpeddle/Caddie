@@ -447,21 +447,26 @@
                     
                 } catch (error) {
                     console.error('❌ Claude API Error:', error);
-                    console.error('Error details:', error.message);
-                    console.error('API key starts with:', this.apiKey.substring(0, 20));
+                    console.error('Error name:', error.name);
+                    console.error('Error message:', error.message);
+                    console.error('Error stack:', error.stack);
                     
-                    // User-friendly error messages with more detail
+                    // Show detailed error to user
+                    let userMessage = '';
+                    
                     if (error.message.includes('401')) {
-                        return `API key error (401). Your key might be wrong. It starts with: ${this.apiKey.substring(0, 15)}... Check if that matches your Anthropic console.`;
+                        userMessage = `API key rejected (401). Key format looks ok but Anthropic says it's invalid. Try creating a fresh key at console.anthropic.com/settings/keys`;
                     } else if (error.message.includes('429')) {
-                        return "Whoa, slow down! I need a second to think. Try again.";
-                    } else if (this.apiKey === 'YOUR_API_KEY_HERE') {
-                        return "Hey! You need to add your Anthropic API key first. Get one at console.anthropic.com (you get $5 free credit!).";
-                    } else if (error.message.includes('Failed to fetch')) {
-                        return `Network error. Check your internet connection. Error: ${error.message}`;
+                        userMessage = "Rate limit hit. Wait 60 seconds and try again.";
+                    } else if (error.message.includes('Failed to fetch') || error.message.includes('Load failed')) {
+                        userMessage = `Network error: ${error.message}. This might be Safari blocking the request. Try: (1) Wait 10 minutes for new key to activate, (2) Check you're on WiFi/cellular, (3) Try on desktop browser first.`;
+                    } else if (error.message.includes('NetworkError')) {
+                        userMessage = `Safari is blocking the API request. Try enabling Cross-Site Tracking in Settings → Safari → Privacy → Allow Cross-Site Tracking (temporarily).`;
                     } else {
-                        return `API error: ${error.message}. Check console logs for details.`;
+                        userMessage = `Unexpected error: ${error.name} - ${error.message}. Check console for details.`;
                     }
+                    
+                    return userMessage;
                 }
             }
 
