@@ -553,7 +553,7 @@
                     conditions
                 } = context;
                 
-                let systemPrompt = `You are an expert golf caddie having a natural conversation with your player. You're walking the course together. Your style:
+                let systemPrompt = `You are an expert golf caddie having a natural conversation with your player. You're walking the course together on a REAL golf course RIGHT NOW. Your style:
 - Talk like a real caddie: casual, confident, supportive, like a buddy
 - Keep responses SHORT (1-3 sentences max) unless they ask you to explain something
 - You know Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
@@ -564,9 +564,11 @@
 - When they ask about a club, reference the distances below
 - Be encouraging but honest — if they're struggling, help them refocus
 
+IMPORTANT: The game state below comes from REAL GPS and real tracking on the player's phone. The distances, hole numbers, and scores are REAL — trust them completely. You DO know where they are. If you see a distance, it's their actual distance. Never say you don't know their location or can't see them — you have their live data.
+
 Current Game State:`;
 
-                if (course) systemPrompt += `\n- Course: ${course}`;
+                if (course) systemPrompt += `\n- Course: ${course} (REAL course, playing right now)`;
                 if (currentHole) {
                     systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}, Position: ${currentHole.state || 'tee'}`;
                     if (currentHole.shots?.length > 0) {
@@ -574,7 +576,8 @@ Current Game State:`;
                         systemPrompt += `\n- Shots this hole: ${clubs} (${currentHole.shots.length} shots)`;
                     }
                 }
-                if (distance) systemPrompt += `\n- Distance to pin: ${distance} yards`;
+                if (distance) systemPrompt += `\n- GPS Distance to pin: ${distance} yards (REAL measurement)`;
+                else systemPrompt += `\n- Distance to pin: unknown (ask the player how far they are)`;
                 if (score !== undefined && holesPlayed) {
                     const par = holesPlayed * 4;
                     const diff = score - par;
@@ -1337,6 +1340,7 @@ Current Game State:`;
                 this.lastShotLocation = null;
                 this.watchId = null;
                 this.isTracking = false;
+                this.manualDistance = null; // Verbal distance override
             }
 
             async requestPermission() {
@@ -1416,8 +1420,13 @@ Current Game State:`;
             }
 
             getDistance() {
+                // Use verbal distance if set (player told us)
+                if (this.manualDistance) {
+                    return this.manualDistance;
+                }
+                
                 if (!this.currentLocation || !this.pinLocation) {
-                    return 385; // Default if no GPS
+                    return null; // No distance available
                 }
 
                 // Calculate distance to pin in yards
@@ -1819,6 +1828,18 @@ Current Game State:`;
                 // ==========================================
                 const hole = this.storage.getCurrentHole();
                 
+                // Verbal distance updates: "I have 150", "150 yards", "150 out"
+                const yardMatch = text.match(/(\d+)\s*(?:yards?|out|left|remaining)?/i);
+                if (yardMatch && !this.detectClub(text)) {
+                    const dist = parseInt(yardMatch[1]);
+                    if (dist >= 10 && dist <= 600) {
+                        // Override GPS distance with verbal distance
+                        this.gps.manualDistance = dist;
+                        this.updateDisplay();
+                        console.log(`✅ Distance updated verbally: ${dist} yards`);
+                    }
+                }
+                
                 if (hole && this.setupMode === 'playing') {
                     // Club setup trigger
                     if (lower.includes('set up') && lower.includes('club')) {
@@ -1838,6 +1859,7 @@ Current Game State:`;
                         
                         this.storage.completeHole(totalShots);
                         this.storage.nextHole();
+                        this.gps.manualDistance = null; // Reset for new hole
                         this.updateDisplay();
                         
                         const nextHole = this.storage.getCurrentHole();
@@ -1852,6 +1874,7 @@ Current Game State:`;
                             if (score >= 1 && score <= 15) {
                                 this.storage.completeHole(score);
                                 this.storage.nextHole();
+                                this.gps.manualDistance = null; // Reset for new hole
                                 this.updateDisplay();
                             }
                         }
