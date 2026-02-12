@@ -554,21 +554,25 @@
                 } = context;
                 
                 let systemPrompt = `You are an expert golf caddie having a natural conversation with your player. You're walking the course together. Your style:
-- Talk like a real caddie: casual, confident, supportive
-- Keep responses SHORT (1-3 sentences) unless explaining a concept
-- Know Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
-- Know golf strategy, course management, club selection, mental game
-- Give specific advice, not generic tips
-- If the player mentions a course, help them get set up naturally
-- If they haven't set up clubs yet, casually ask about their distances
-- Track their game and reference their patterns
-- Be encouraging but honest
+- Talk like a real caddie: casual, confident, supportive, like a buddy
+- Keep responses SHORT (1-3 sentences max) unless they ask you to explain something
+- You know Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
+- You know golf strategy, course management, club selection, mental game
+- Give SPECIFIC advice based on their actual club distances below — never guess
+- Remember everything they tell you in this conversation
+- When they tell you club distances, acknowledge and remember them
+- When they ask about a club, reference the distances below
+- Be encouraging but honest — if they're struggling, help them refocus
 
 Current Game State:`;
 
                 if (course) systemPrompt += `\n- Course: ${course}`;
                 if (currentHole) {
-                    systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}, ${currentHole.state || 'tee'}`;
+                    systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}, Position: ${currentHole.state || 'tee'}`;
+                    if (currentHole.shots?.length > 0) {
+                        const clubs = currentHole.shots.map(s => s.club).join(', ');
+                        systemPrompt += `\n- Shots this hole: ${clubs} (${currentHole.shots.length} shots)`;
+                    }
                 }
                 if (distance) systemPrompt += `\n- Distance to pin: ${distance} yards`;
                 if (score !== undefined && holesPlayed) {
@@ -577,10 +581,18 @@ Current Game State:`;
                     systemPrompt += `\n- Score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed})`;
                 }
                 if (conditions?.windy) systemPrompt += `\n- Wind present`;
-                if (clubHistory) systemPrompt += `\n- Player performance data available`;
+                
+                // ALWAYS include full club bag
                 if (context.playerClubs) {
                     const clubs = context.playerClubs;
-                    systemPrompt += `\n- Player's clubs: Driver ${clubs['Driver']}y, 7i ${clubs['7 Iron']}y, PW ${clubs['Pitching Wedge']}y`;
+                    systemPrompt += `\n\nPlayer's Club Distances (MEMORIZE THESE):`;
+                    for (const [club, dist] of Object.entries(clubs)) {
+                        systemPrompt += `\n  ${club}: ${dist} yards`;
+                    }
+                }
+                
+                if (!course && !currentHole) {
+                    systemPrompt += `\n\nNo round started yet. Help them get set up — ask what course and what hole they're starting on. If they want to set up clubs, walk them through it naturally.`;
                 }
 
                 return systemPrompt;
@@ -1701,124 +1713,8 @@ Current Game State:`;
                 const lower = text.toLowerCase();
 
                 // ==========================================
-                // PRIORITY COMMANDS - ALWAYS CHECK FIRST
-                // These work in ANY mode, even during setup
+                // VOICE SPEED - local only, instant response
                 // ==========================================
-                
-                // Club setup - CHECK THIS VERY FIRST
-                if (lower.includes('set up') || lower.includes('setup') || lower.includes('configure') || 
-                    lower.includes('my clubs') || lower.includes('club distances') || 
-                    lower.includes('distances') && (lower.includes('my') || lower.includes('clubs')) ||
-                    lower.includes('input') && lower.includes('clubs')) {
-                    this.setupMode = 'club_setup';
-                    this.clubSetupIndex = 0;
-                    this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
-                    await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
-                    return;
-                }
-                
-                // Start over / Reset
-                if (lower.includes('start over') || lower.includes('restart') || lower.includes('begin again')) {
-                    this.storage.data.currentRound = null;
-                    this.setupMode = 'awaiting_course';
-                    await this.voice.speak("Okay, starting fresh. What course are we playing?");
-                    return;
-                }
-                
-                // ==========================================
-                // AI-POWERED INTELLIGENT RESPONSES
-                // EVERYTHING goes through AI by default
-                // Only specific game commands bypass AI
-                // ==========================================
-                
-                if (this.useAI && this.ai.hasValidKey()) {
-                    // During AI setup phase, route everything to AI
-                    if (this.setupMode === 'ai_setup') {
-                        console.log('🤖 AI Setup mode - routing to Claude');
-                        
-                        // Check if AI response contains course/hole info to auto-start round
-                        const context = {
-                            currentHole: this.storage.getCurrentHole(),
-                            distance: this.gps.getDistance(),
-                            score: this.storage.data.currentRound?.score,
-                            course: this.storage.data.currentRound?.course,
-                            holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
-                            clubHistory: this.storage.data.clubPerformance,
-                            playerClubs: this.storage.data.profile.clubDistances
-                        };
-                        
-                        // Detect course name and hole number from natural speech
-                        const courseMatch = lower.match(/(?:playing|at|going to)\s+(.+?)(?:\s+(?:starting|hole|today)|$)/i);
-                        const holeMatch = lower.match(/(?:hole|starting on|start on|start at)\s+(\d+)/i);
-                        
-                        if (courseMatch || holeMatch || lower.match(/^\d+$/)) {
-                            // They mentioned a course or hole
-                            if (courseMatch && !this.tempCourseName) {
-                                this.tempCourseName = courseMatch[1].trim();
-                            } else if (!this.tempCourseName && !holeMatch) {
-                                // Assume they said the course name
-                                this.tempCourseName = text;
-                            }
-                            
-                            if (holeMatch || lower.match(/^\d+$/)) {
-                                const holeNum = parseInt((holeMatch ? holeMatch[1] : text.match(/(\d+)/)[1]));
-                                const courseName = this.tempCourseName || 'Unknown Course';
-                                this.storage.startRound(courseName, holeNum);
-                                this.updateDisplay();
-                                this.setupMode = 'playing';
-                                
-                                const aiResponse = await this.ai.ask(
-                                    `I'm starting my round at ${courseName}, hole ${holeNum}. Give me a quick pep talk and ask what I'm hitting off the tee.`,
-                                    context
-                                );
-                                await this.voice.speak(aiResponse);
-                                return;
-                            }
-                        }
-                        
-                        // General AI conversation during setup
-                        const aiResponse = await this.ai.ask(text, context);
-                        await this.voice.speak(aiResponse);
-                        
-                        // Check if AI helped identify course/hole
-                        if (this.tempCourseName && !this.storage.data.currentRound) {
-                            // We have a course but no hole yet - AI will naturally ask
-                        }
-                        return;
-                    }
-                    
-                    // During play, route non-game-commands to AI
-                    const isGameCommand = this.detectClub(text) || 
-                        lower.includes('fairway') || lower.includes('rough') || lower.includes('bunker') || 
-                        lower.includes('green') || lower.includes('fringe') || lower.includes('sand') ||
-                        lower.includes('made it') || lower.includes('holed') || lower.includes('sunk') ||
-                        lower.includes('scored') || lower.includes('on the hole') || lower.includes('for the hole') ||
-                        lower.match(/(\d+)\s*(?:feet|foot|ft)/i) || lower.match(/(\d+)\s*(?:percent|%)/i) ||
-                        lower.includes('left to right') || lower.includes('right to left') ||
-                        lower.includes('uphill') || lower.includes('downhill') ||
-                        lower.includes('stimp') || lower.includes('putt') ||
-                        lower.match(/(\d+)\s*yards?/i) ||
-                        lower.includes('next hole') || lower.includes('new hole');
-                    
-                    if (!isGameCommand) {
-                        console.log('🤖 Routing to AI for conversational response');
-                        const context = {
-                            currentHole: this.storage.getCurrentHole(),
-                            distance: this.gps.getDistance(),
-                            score: this.storage.data.currentRound?.score,
-                            course: this.storage.data.currentRound?.course,
-                            holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
-                            conditions: this.storage.getCurrentHole()?.conditions,
-                            clubHistory: this.storage.data.clubPerformance
-                        };
-                        
-                        const aiResponse = await this.ai.ask(text, context);
-                        await this.voice.speak(aiResponse);
-                        return;
-                    }
-                }
-
-                // Voice speed control
                 if (lower.includes('slow down') || lower.includes('slower') || lower.includes('talk slower')) {
                     const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
                     const newSpeed = Math.max(0.5, currentSpeed - 0.2);
@@ -1827,7 +1723,6 @@ Current Game State:`;
                     await this.voice.speak(`Slowing down to ${Math.round(newSpeed * 100)}% speed.`);
                     return;
                 }
-                
                 if (lower.includes('speed up') || lower.includes('faster') || lower.includes('talk faster')) {
                     const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
                     const newSpeed = Math.min(2.0, currentSpeed + 0.2);
@@ -1836,31 +1731,16 @@ Current Game State:`;
                     await this.voice.speak(`Speeding up to ${Math.round(newSpeed * 100)}% speed.`);
                     return;
                 }
-                
                 if (lower.includes('normal speed') || lower.includes('regular speed')) {
                     this.storage.data.profile.voiceSpeed = 1.0;
                     this.storage.save();
                     await this.voice.speak(`Back to normal speed.`);
                     return;
                 }
-                
-                // Set specific speed
-                const speedMatch = text.match(/(?:voice\s+)?speed\s+(\d+(?:\.\d+)?)/i);
-                if (speedMatch) {
-                    let speed = parseFloat(speedMatch[1]);
-                    if (speed > 10) speed = speed / 100;
-                    speed = Math.max(0.5, Math.min(2.0, speed));
-                    this.storage.data.profile.voiceSpeed = speed;
-                    this.storage.save();
-                    await this.voice.speak(`Voice speed set to ${Math.round(speed * 100)}%.`);
-                    return;
-                }
 
                 // ==========================================
-                // MODE-SPECIFIC PROCESSING
+                // CLUB SETUP MODE - structured input needed
                 // ==========================================
-
-                // In club setup mode
                 if (this.setupMode === 'club_setup') {
                     const distMatch = text.match(/(\d+)/);
                     if (distMatch) {
@@ -1875,549 +1755,169 @@ Current Game State:`;
                         if (this.clubSetupIndex < this.clubsToSetup.length) {
                             await this.voice.speak(`${currentClub}, ${distance} yards. How far does your ${this.clubsToSetup[this.clubSetupIndex]} go?`);
                         } else {
-                            await this.voice.speak(`Perfect! All clubs configured. Ready to play? What course?`);
-                            this.setupMode = 'awaiting_course';
+                            await this.voice.speak(`Perfect! All clubs configured. Ready to play!`);
+                            this.setupMode = 'ai_setup';
                         }
                         return;
                     } else if (lower.includes('skip') || lower.includes('done') || lower.includes('nevermind') || lower.includes('finish')) {
-                        await this.voice.speak("Club setup complete. What course are we playing?");
-                        this.setupMode = 'awaiting_course';
-                        return;
-                    } else {
-                        // FALLBACK - Didn't understand, ask again
-                        const currentClub = this.clubsToSetup[this.clubSetupIndex];
-                        await this.voice.speak(`Didn't catch that. How many yards does your ${currentClub} go? Say skip to move on.`);
+                        await this.voice.speak("Club setup complete!");
+                        this.setupMode = 'ai_setup';
                         return;
                     }
                 }
 
-                // Setup phase - awaiting course (fallback if AI not available)
-                if (this.setupMode === 'awaiting_course') {
-                    this.tempCourseName = text;
-                    await this.voice.speak(`${text}. What hole are we starting on?`);
-                    this.setupMode = 'awaiting_hole';
-                    return;
-                }
-
-                // Setup phase - awaiting hole
-                if (this.setupMode === 'awaiting_hole') {
-                    const holeMatch = text.match(/(\d+)/);
-                    if (holeMatch) {
-                        const hole = holeMatch[1];
-                        this.storage.startRound(this.tempCourseName, hole);
-                        this.updateDisplay();
-                        
-                        const distance = this.gps.getDistance();
-                        this.gps.reset(distance);
-                        
-                        const club = this.storage.recommendClub(distance);
-                        await this.voice.speak(`Hole ${hole}, ${distance} yards. I'd go with ${club}. What are you hitting?`);
-                        this.setupMode = 'playing';
-                        return;
-                    } else {
-                        // FALLBACK - Didn't hear a number, ask again conversationally
-                        await this.voice.speak(`Didn't catch the hole number. Which hole? Just say the number.`);
-                        return;
-                    }
-                }
-
-                // Playing phase
-                if (this.setupMode === 'playing') {
-                    // Distance updates during play
-                    if (lower.includes('yards left') || lower.includes('yards remaining') || 
-                        lower.includes('i have') || lower.includes('got')) {
-                        const yardMatch = text.match(/(\d+)\s*yards?/i);
-                        if (yardMatch) {
-                            const newDist = parseInt(yardMatch[1]);
-                            this.gps.currentDistance = newDist;
-                            this.updateDisplay();
-                            
-                            const recommendation = this.storage.getSmartRecommendation(newDist, {
-                                windy: this.storage.getCurrentHole()?.conditions?.windy
-                            });
-                            
-                            let response = `${newDist} yards. I'd suggest ${recommendation.club}`;
-                            if (recommendation.reason) {
-                                response += ` - ${recommendation.reason}`;
-                            }
-                            response += `. What are you hitting?`;
-                            
-                            await this.voice.speak(response);
-                            return;
-                        }
-                    }
-                    
-                    await this.handleGameCommand(text);
-                    return;
-                }
-                
-                // UNIVERSAL FALLBACK - Should never get here, but if we do...
-                console.log('Fallback triggered. Mode:', this.setupMode, 'Text:', text);
-                await this.voice.speak("Not sure what you meant. Try saying that again, or say start over to reset.");
-            }
-
-            async handleGameCommand(text) {
-                const lower = text.toLowerCase();
-                const hole = this.storage.getCurrentHole();
-                if (!hole) return;
-                
                 // ==========================================
-                // NATURAL LANGUAGE AI - Contextual Understanding
+                // DETECT & STORE: Club distances said naturally
+                // "my driver goes 280" / "7 iron is 155"
                 // ==========================================
-                
-                // "What can I do here?" - Contextual advice
-                if ((lower.includes('what') && (lower.includes('can i') || lower.includes('should i') || lower.includes('do here'))) ||
-                    lower.includes('what now') || lower.includes('what next')) {
-                    const dist = this.gps.getDistance();
-                    const recommendation = this.storage.getSmartRecommendation(dist, { 
-                        windy: hole.conditions?.windy 
-                    });
-                    
-                    let advice = '';
-                    if (hole.state === 'green') {
-                        const lastProx = hole.lastProximity || 20;
-                        advice = `You're on the green, ${lastProx} feet out. Read the slope and break. Tell me the distance, slope percentage, stimp reading, and which way it breaks.`;
-                    } else if (dist < 50) {
-                        advice = `You've got ${dist} yards. Wedge distance. I'd go ${recommendation.club}. ${recommendation.reason}. Focus on a soft landing.`;
-                    } else if (dist < 150) {
-                        advice = `${dist} yards. Mid-iron range. I'd suggest ${recommendation.club}. ${recommendation.reason}. Pick your target line.`;
-                    } else {
-                        advice = `${dist} yards to the pin. That's ${recommendation.club} for you. ${recommendation.reason}. Trust it and commit.`;
-                    }
-                    
-                    await this.voice.speak(advice);
-                    return;
-                }
-                
-                // Help requests
-                if (lower.includes('help') || lower.includes('how') && lower.includes('work') || 
-                    lower.includes('what do i say') || lower.includes('commands')) {
-                    let helpMsg = '';
-                    if (hole.state === 'green') {
-                        helpMsg = `For putting: say the distance like "15 feet", I'll ask slope percentage, stimp reading, and break direction. I'll calculate your exact aim point. Or say "made it" if you holed out.`;
-                    } else if (hole.state === 'tee') {
-                        helpMsg = `From the tee: just say your club like "driver". After you hit, tell me where it landed - fairway, rough, trees, bunker, or on the green.`;
-                    } else {
-                        helpMsg = `Tell me your lie - fairway, rough, bunker. I'll suggest a club based on your history. Then say what you're hitting.`;
-                    }
-                    await this.voice.speak(helpMsg);
-                    return;
-                }
-                
-                // Distance questions without club
-                if ((lower.includes('how far') || lower.includes('what') && lower.includes('distance') || lower.includes('yardage')) 
-                    && !this.detectClub(text)) {
-                    const dist = this.gps.getDistance();
-                    await this.voice.speak(`${dist} yards to the center of the green.`);
-                    return;
-                }
-                
-                // Club recommendation questions
-                if (lower.includes('what club') || lower.includes('which club') || 
-                    lower.includes('what should i hit') || lower.includes('club should i')) {
-                    const dist = this.gps.getDistance();
-                    const recommendation = this.storage.getSmartRecommendation(dist, { 
-                        windy: hole.conditions?.windy 
-                    });
-                    await this.voice.speak(`For ${dist} yards, I'd go ${recommendation.club}. ${recommendation.reason}.`);
-                    return;
-                }
-                
-                // Score questions
-                if (lower.includes('what') && lower.includes('score') || 
-                    lower.includes('how am i doing') || lower.includes('how many')) {
-                    const currentScore = this.storage.data.currentRound?.score || 0;
-                    const holesPlayed = this.storage.data.currentRound?.holes?.length || 0;
-                    const par = holesPlayed * 4; // Assume par 4s
-                    const diff = currentScore - par;
-                    let status = diff === 0 ? 'even par' : diff > 0 ? `${diff} over` : `${Math.abs(diff)} under`;
-                    await this.voice.speak(`You're ${status}, ${currentScore} total through ${holesPlayed} holes.`);
-                    return;
-                }
-                
-                // Wind detection with proactive recommendation
-                if (lower.includes('wind') || lower.includes('windy') || lower.includes('breezy')) {
-                    hole.conditions = hole.conditions || {};
-                    hole.conditions.windy = true;
-                    const dist = this.gps.getDistance();
-                    const recommendation = this.storage.getSmartRecommendation(dist, { windy: true });
-                    await this.voice.speak(`Got it, windy. For ${dist} yards in wind, I'd go ${recommendation.club}. ${recommendation.reason}.`);
-                    return;
-                }
-                
-                // Query club distances - "what's my 7 iron" or "how far is my driver"
-                if (lower.includes('what') || lower.includes('how far')) {
-                    const clubQuery = this.detectClub(text);
-                    if (clubQuery) {
-                        const distance = this.storage.data.profile.clubDistances[clubQuery];
-                        const history = this.storage.getClubHistory(clubQuery);
-                        
-                        if (history && history.distances.length > 0) {
-                            const avgActual = Math.round(history.distances.reduce((a, b) => a + b, 0) / history.distances.length);
-                            await this.voice.speak(`Your ${clubQuery} is set at ${distance} yards. You've been averaging ${avgActual} yards with it.`);
-                        } else {
-                            await this.voice.speak(`Your ${clubQuery} is set at ${distance} yards.`);
-                        }
-                        return;
-                    }
-                }
-                
-                // Handle club distance setup - "my driver goes 250" or "driver 250"
-                const clubDistancePattern = /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes\s+|is\s+)?(\d+)(?:\s+yards)?/i;
+                const clubDistancePattern = /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes|is|about|around)\s+(\d+)/i;
                 const clubDistMatch = text.match(clubDistancePattern);
-                if (clubDistMatch && this.detectClub(clubDistMatch[1])) {
-                    const clubName = this.detectClub(clubDistMatch[1]);
+                if (clubDistMatch) {
+                    const detectedClub = this.detectClub(clubDistMatch[1]);
                     const distance = parseInt(clubDistMatch[2]);
-                    
-                    if (distance >= 50 && distance <= 350) {
-                        this.storage.data.profile.clubDistances[clubName] = distance;
+                    if (detectedClub && distance >= 40 && distance <= 400) {
+                        this.storage.data.profile.clubDistances[detectedClub] = distance;
                         this.storage.save();
-                        await this.voice.speak(`Got it. ${clubName} is ${distance} yards. Anything else?`);
-                        return;
+                        console.log(`✅ Stored: ${detectedClub} = ${distance} yards`);
+                        // Don't return — let AI respond conversationally too
                     }
                 }
-
-                // Detect club
-                const club = this.detectClub(text);
-                if (club) {
-                    // Record GPS position before shot
-                    this.gps.recordShotStart();
-                    
-                    const distance = this.gps.getDistance();
-                    this.storage.recordShot(club, distance, { 
-                        state: hole.state,
-                        windy: hole.conditions?.windy,
-                        gpsLocation: this.gps.currentLocation
-                    });
-                    
-                    // Handle putter specially
-                    if (club === 'Putter') {
-                        hole.putts = (hole.putts || 0) + 1;
-                        
-                        // Check if they made it
-                        if (lower.includes('made') || lower.includes('in') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained')) {
-                            const totalShots = hole.shots.length;
-                            this.storage.completeHole(totalShots);
-                            
-                            // Track putting stats
-                            if (!this.storage.data.puttingStats) {
-                                this.storage.data.puttingStats = { total: 0, made: 0, byDistance: {} };
-                            }
-                            this.storage.data.puttingStats.made++;
-                            this.storage.data.puttingStats.total++;
-                            
-                            this.storage.nextHole();
-                            this.updateDisplay();
-                            
-                            const nextHole = this.storage.getCurrentHole();
-                            const dist = 385;
-                            this.gps.reset(dist);
-                            
-                            const par = hole.par || 4;
-                            const diff = totalShots - par;
-                            let comment = '';
-                            if (diff <= -2) comment = 'Eagle! Incredible!';
-                            else if (diff === -1) comment = 'Birdie! Nice read!';
-                            else if (diff === 0) comment = 'Par. Solid putting.';
-                            else if (diff === 1) comment = 'Bogey.';
-                            else comment = `${totalShots} on the hole.`;
-                            
-                            // AI Course-Specific Insights
-                            const courseInsights = this.storage.getCourseInsights(
-                                this.storage.data.currentRound.course, 
-                                nextHole.number
-                            );
-                            
-                            let aiInsight = '';
-                            if (courseInsights) {
-                                if (courseInsights.trend === 'improving') {
-                                    aiInsight = ` You're getting better on this hole - trending down from ${Math.round(courseInsights.avgScore)}.`;
-                                } else if (courseInsights.trend === 'struggling') {
-                                    aiInsight = ` This hole's been tough - averaging ${courseInsights.avgScore}.`;
-                                } else {
-                                    aiInsight = ` You usually score ${courseInsights.avgScore} here.`;
-                                }
-                                
-                                if (courseInsights.mostUsedClub) {
-                                    aiInsight += ` Last time you used ${courseInsights.mostUsedClub} off the tee.`;
-                                }
-                            }
-                            
-                            await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards.${aiInsight} What's your tee shot?`);
-                            nextHole.state = 'tee';
-                        } else {
-                            // Missed putt - give lag putting advice
-                            const lastDistance = hole.lastProximity || 20;
-                            const advice = this.getLagPuttAdvice(lastDistance);
-                            await this.voice.speak(advice);
+                
+                // ==========================================
+                // DETECT & STORE: Course and hole setup
+                // ==========================================
+                if (!this.storage.data.currentRound) {
+                    // Try to detect course name
+                    const coursePatterns = [
+                        /(?:playing|at|going to|we're at)\s+(.+?)(?:\s+(?:today|starting|hole)|$)/i,
+                        /(?:course is|course called)\s+(.+?)(?:\s|$)/i
+                    ];
+                    for (const pattern of coursePatterns) {
+                        const match = text.match(pattern);
+                        if (match) {
+                            this.tempCourseName = match[1].trim();
+                            break;
                         }
+                    }
+                    
+                    // Try to detect hole number
+                    const holeMatch = lower.match(/(?:hole|starting|start)\s+(\d+)/i) || lower.match(/^(\d+)$/);
+                    if (holeMatch && this.tempCourseName) {
+                        const holeNum = parseInt(holeMatch[1]);
+                        if (holeNum >= 1 && holeNum <= 18) {
+                            this.storage.startRound(this.tempCourseName, holeNum);
+                            this.updateDisplay();
+                            this.setupMode = 'playing';
+                            console.log(`✅ Round started: ${this.tempCourseName}, hole ${holeNum}`);
+                        }
+                    }
+                }
+
+                // ==========================================
+                // DETECT & TRACK: Game actions (shots, holes)
+                // These update game state THEN AI responds
+                // ==========================================
+                const hole = this.storage.getCurrentHole();
+                
+                if (hole && this.setupMode === 'playing') {
+                    // Club setup trigger
+                    if (lower.includes('set up') && lower.includes('club')) {
+                        this.setupMode = 'club_setup';
+                        this.clubSetupIndex = 0;
+                        this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
+                        await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
                         return;
                     }
                     
-                    // Regular shots (not putter)
-                    const clubDist = this.storage.data.profile.clubDistances[club] || 150;
-                    this.gps.moveCloser(clubDist);
-                    
-                    const newDist = this.gps.getDistance();
-                    this.updateDisplay();
-                    
-                    if (hole.state === 'tee') {
-                        hole.state = 'fairway';
-                        await this.voice.speak(`Nice ${club}. You've got ${newDist} yards left. Where'd it land?`);
-                        // Don't auto-listen - they need to walk to their ball first
-                    } else if (newDist < 30) {
-                        hole.state = 'green';
-                        await this.voice.speak(`${club}. Did you hit the green?`);
-                        // Don't auto-listen - they're walking to green
-                    } else {
-                        await this.voice.speak(`${club}. ${newDist} yards out. What's your lie?`);
-                        // Don't auto-listen - they're assessing their lie
-                    }
-                    return;
-                }
-
-                // Handle putting state triggers
-                if (lower.includes('putt') && !lower.includes('putting wedge')) {
-                    hole.state = 'green';
-                    
-                    // Check if they're saying they made the putt
-                    if (lower.includes('made') || lower.includes('in') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained')) {
-                        const totalShots = hole.shots.length + 1;
+                    // Made putt / holed out
+                    if (lower.includes('made it') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained') ||
+                        (lower.includes('made') && lower.includes('putt'))) {
+                        const totalShots = hole.shots.length + (hole.state === 'green' ? 1 : 0);
+                        const par = hole.par || 4;
+                        const diff = totalShots - par;
+                        
                         this.storage.completeHole(totalShots);
                         this.storage.nextHole();
                         this.updateDisplay();
                         
                         const nextHole = this.storage.getCurrentHole();
-                        const dist = 385;
-                        this.gps.reset(dist);
-                        
-                        const par = hole.par || 4;
-                        const diff = totalShots - par;
-                        let comment = '';
-                        if (diff <= -2) comment = 'Eagle! What a putt!';
-                        else if (diff === -1) comment = 'Birdie! Great roll!';
-                        else if (diff === 0) comment = 'Par. Good speed.';
-                        else if (diff === 1) comment = 'Bogey.';
-                        else comment = `${totalShots} on the hole.`;
-                        
-                        await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards. What are you hitting?`);
-                        nextHole.state = 'tee';
-                    } else {
-                        await this.voice.speak("How far is the putt?");
+                        // Let AI celebrate and introduce next hole
                     }
-                    return;
-                }
-
-                // Handle green reading context
-                if (lower.includes('uphill') || lower.includes('up hill')) {
-                    hole.greenContext = { slope: 'uphill' };
-                    await this.voice.speak("Uphill putt. Add pace, it'll be slower than it looks. How many feet?");
-                    return;
-                }
-
-                if (lower.includes('downhill') || lower.includes('down hill')) {
-                    hole.greenContext = { slope: 'downhill' };
-                    await this.voice.speak("Downhill. Take some off, let gravity help. How many feet?");
-                    return;
-                }
-
-                if (lower.includes('left to right') || lower.includes('left-to-right')) {
-                    hole.greenContext = { break: 'left-to-right' };
-                    await this.voice.speak("Breaking left to right. Aim left of the hole. How far?");
-                    return;
-                }
-
-                if (lower.includes('right to left') || lower.includes('right-to-left')) {
-                    hole.greenContext = { break: 'right-to-left' };
-                    await this.voice.speak("Right to left break. Start it right. How far?");
-                    return;
-                }
-
-                if (lower.includes('fast') && lower.includes('green')) {
-                    hole.greenContext = { speed: 'fast' };
-                    await this.voice.speak("Fast greens today. Smooth stroke, less backswing. Distance?");
-                    return;
-                }
-
-                if (lower.includes('slow') && lower.includes('green')) {
-                    hole.greenContext = { speed: 'slow' };
-                    await this.voice.speak("Slow greens. Be aggressive with your stroke. Distance?");
-                    return;
-                }
-
-                // Handle lies
-                if (lower.includes('fairway')) {
-                    const dist = this.gps.getDistance();
-                    const recommendation = this.storage.getSmartRecommendation(dist, { 
-                        windy: hole.conditions?.windy 
-                    });
                     
-                    let suggestion = `Good fairway. ${dist} yards. I'd suggest ${recommendation.club}`;
-                    if (recommendation.reason) {
-                        suggestion += ` - ${recommendation.reason}`;
-                    }
-                    suggestion += `. What are you hitting?`;
-                    
-                    await this.voice.speak(suggestion);
-                    return;
-                }
-
-                if (lower.includes('rough') || lower.includes('trees')) {
-                    const dist = this.gps.getDistance();
-                    await this.voice.speak(`In the rough. ${dist} yards. Play it safe. What's your shot?`);
-                    // Don't auto-listen - they're thinking about strategy
-                    return;
-                }
-
-                if (lower.includes('bunker') || lower.includes('sand')) {
-                    await this.voice.speak("In the sand. Get it on the green and give yourself a putt.");
-                    // Don't auto-listen - they're hitting from bunker
-                    return;
-                }
-
-                if (lower.includes('green') || lower.includes('on the green')) {
-                    hole.state = 'green';
-                    await this.voice.speak("Nice! You're on the green. How many feet from the hole?");
-                    // Don't auto-listen - they're walking to green to measure
-                    return;
-                }
-
-                if (lower.includes('fringe') || lower.includes('collar')) {
-                    hole.state = 'green';
-                    await this.voice.speak("On the fringe. You can putt it or chip it. What are you thinking?");
-                    // Don't auto-listen - they're deciding
-                    return;
-                }
-
-                // Handle proximity with Vector Putting calculations
-                const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft)/i);
-                if (feetMatch && hole.state === 'green') {
-                    const feet = parseInt(feetMatch[1]);
-                    hole.lastProximity = feet;
-                    this.currentPuttData.distance = feet;
-                    
-                    await this.voice.speak(`${feet} feet. What's the slope percentage?`);
-                    return;
-                }
-
-                // Handle slope percentage
-                const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
-                if (slopeMatch && this.currentPuttData.distance && !this.currentPuttData.slope) {
-                    const slope = parseInt(slopeMatch[1]);
-                    this.currentPuttData.slope = slope;
-                    
-                    await this.voice.speak(`${slope} percent slope. What's the stimp reading?`);
-                    return;
-                }
-
-                // Handle stimp reading
-                if (text.match(/stimp|speed/i) || (lower.match(/\d/) && this.currentPuttData.slope && !this.currentPuttData.stimp)) {
-                    const stimpMatch = text.match(/(\d+(?:\.\d+)?)/);
-                    if (stimpMatch) {
-                        const stimp = parseFloat(stimpMatch[1]);
-                        if (stimp >= 6 && stimp <= 14) {
-                            this.currentPuttData.stimp = stimp;
-                            
-                            await this.voice.speak(`Stimp ${stimp}. Which way does it break?`);
-                            return;
+                    // Score for hole directly: "scored 5" / "5 on the hole"
+                    if (lower.includes('scored') || lower.includes('on the hole') || lower.includes('for the hole')) {
+                        const scoreMatch = text.match(/(\d+)/);
+                        if (scoreMatch) {
+                            const score = parseInt(scoreMatch[1]);
+                            if (score >= 1 && score <= 15) {
+                                this.storage.completeHole(score);
+                                this.storage.nextHole();
+                                this.updateDisplay();
+                            }
                         }
                     }
-                }
-
-                // Handle break direction
-                if ((lower.includes('left') || lower.includes('right')) && this.currentPuttData.distance && this.currentPuttData.slope) {
-                    let breakDir = '';
-                    let uphillDownhill = 'level';
                     
-                    if (lower.includes('left to right') || lower.includes('left-to-right')) {
-                        breakDir = 'left-to-right';
-                    } else if (lower.includes('right to left') || lower.includes('right-to-left')) {
-                        breakDir = 'right-to-left';
+                    // Detect club being hit — record the shot
+                    const club = this.detectClub(text);
+                    if (club && !lower.includes('what') && !lower.includes('how far') && !lower.includes('my')) {
+                        this.gps.recordShotStart();
+                        const distance = this.gps.getDistance();
+                        this.storage.recordShot(club, distance, { 
+                            state: hole.state,
+                            windy: hole.conditions?.windy
+                        });
+                        
+                        if (club === 'Putter') {
+                            hole.putts = (hole.putts || 0) + 1;
+                            hole.state = 'green';
+                        } else if (hole.state === 'tee') {
+                            hole.state = 'fairway';
+                        }
+                        
+                        console.log(`✅ Shot recorded: ${club}`);
                     }
                     
-                    if (lower.includes('uphill')) {
-                        uphillDownhill = 'uphill';
-                    } else if (lower.includes('downhill')) {
-                        uphillDownhill = 'downhill';
+                    // Update lie state
+                    if (lower.includes('on the green') || lower.includes('hit the green')) {
+                        hole.state = 'green';
+                    } else if (lower.includes('fairway')) {
+                        hole.state = 'fairway';
                     }
                     
-                    this.currentPuttData.breakDirection = breakDir;
-                    this.currentPuttData.uphillDownhill = uphillDownhill;
-                    
-                    // Calculate and provide aim point!
-                    const aimPoint = this.vectorPutting.getAimPoint(
-                        this.currentPuttData.distance,
-                        this.currentPuttData.slope,
-                        this.currentPuttData.stimp,
-                        breakDir,
-                        uphillDownhill
-                    );
-                    
-                    await this.voice.speak(aimPoint.description + ". Die it 12 inches past.");
-                    
-                    // Reset for next putt
-                    this.currentPuttData = {
-                        distance: null,
-                        slope: null,
-                        stimp: this.currentPuttData.stimp, // Keep stimp for rest of round
-                        breakDirection: null,
-                        uphillDownhill: 'level'
-                    };
-                    return;
-                }
-
-                // Handle score directly
-                if (lower.includes('scored') || (lower.match(/\d+/) && (lower.includes('on the hole') || lower.includes('for the hole')))) {
-                    const scoreMatch = text.match(/(\d+)/);
-                    if (scoreMatch) {
-                        const score = parseInt(scoreMatch[1]);
-                        this.storage.completeHole(score);
-                        this.storage.nextHole();
-                        this.updateDisplay();
-                        
-                        const nextHole = this.storage.getCurrentHole();
-                        const dist = 385;
-                        this.gps.reset(dist);
-                        
-                        const par = hole.par || 4;
-                        const diff = score - par;
-                        let comment = '';
-                        if (diff <= -2) comment = 'Eagle! Wow!';
-                        else if (diff === -1) comment = 'Birdie! Excellent!';
-                        else if (diff === 0) comment = 'Par. Solid.';
-                        else if (diff === 1) comment = 'Bogey.';
-                        else comment = `${score} on the hole.`;
-                        
-                        await this.voice.speak(`${comment} Hole ${nextHole.number}, ${dist} yards. What's your play?`);
-                        nextHole.state = 'tee';
+                    // Wind detection
+                    if (lower.includes('wind') || lower.includes('windy')) {
+                        hole.conditions = hole.conditions || {};
+                        hole.conditions.windy = true;
                     }
-                    return;
                 }
 
-                // If on the green and they say a number, assume it's putts
-                if (hole.state === 'green' && lower.match(/\d+/) && (lower.includes('putt') || !club)) {
-                    const putts = parseInt(text.match(/(\d+)/)[1]);
-                    const totalShots = hole.shots.length + putts;
-                    this.storage.completeHole(totalShots);
-                    this.storage.nextHole();
-                    this.updateDisplay();
-                    
-                    const nextHole = this.storage.getCurrentHole();
-                    const dist = 385;
-                    this.gps.reset(dist);
-                    
-                    await this.voice.speak(`Got it. Moving to hole ${nextHole.number}, ${dist} yards.`);
-                    nextHole.state = 'tee';
-                    return;
-                }
-
-                // Default - didn't recognize command
-                if (hole.state === 'green') {
-                    await this.voice.speak("On the green. Tell me the distance in feet, or say you made it.");
-                } else {
-                    await this.voice.speak("What club are you hitting? Or tell me your lie - fairway, rough, bunker.");
+                // ==========================================
+                // EVERYTHING GOES TO AI
+                // Claude is the brain — always responds
+                // ==========================================
+                console.log('🤖 Sending to Claude AI:', text);
+                
+                const context = {
+                    currentHole: this.storage.getCurrentHole(),
+                    distance: this.gps.getDistance(),
+                    score: this.storage.data.currentRound?.score,
+                    course: this.storage.data.currentRound?.course,
+                    holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
+                    conditions: this.storage.getCurrentHole()?.conditions,
+                    clubHistory: this.storage.data.clubPerformance,
+                    playerClubs: this.storage.data.profile.clubDistances
+                };
+                
+                try {
+                    const aiResponse = await this.ai.ask(text, context);
+                    await this.voice.speak(aiResponse);
+                } catch (err) {
+                    console.error('AI error:', err);
+                    await this.voice.speak("Having trouble connecting. Check your signal and try again.");
                 }
             }
+
+            // handleGameCommand removed — AI handles all game conversation now
 
             getAdvancedPuttingAdvice(feet, context = {}) {
                 // VECTOR PUTTING METHODOLOGY
