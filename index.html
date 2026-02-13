@@ -451,6 +451,8 @@
                 // API key is handled server-side by Vercel proxy — no key needed here!
                 this.endpoint = 'https://caddie-proxy.vercel.app/api/chat';
                 this.conversationHistory = [];
+                this.memory = this.loadMemory();
+                this.messageCount = 0;
             }
 
             hasValidKey() {
@@ -465,18 +467,164 @@
             clearApiKey() {
                 // No-op — proxy handles the key
             }
+            
+            // ==========================================
+            // PERSISTENT MEMORY SYSTEM
+            // Survives app closes, swipe-outs, restarts
+            // ==========================================
+            
+            loadMemory() {
+                try {
+                    const stored = localStorage.getItem('caddie_ai_memory');
+                    return stored ? JSON.parse(stored) : this.getDefaultMemory();
+                } catch (e) {
+                    return this.getDefaultMemory();
+                }
+            }
+            
+            getDefaultMemory() {
+                return {
+                    playerNotes: [],      // AI observations about the player
+                    swingTips: [],         // Tips discussed
+                    tendencies: [],        // Patterns noticed (e.g. "slices driver")
+                    roundSummaries: [],    // End-of-round AI summaries
+                    preferences: [],       // Player preferences (e.g. "aggressive putter")
+                    lastUpdated: null
+                };
+            }
+            
+            saveMemory() {
+                try {
+                    this.memory.lastUpdated = new Date().toISOString();
+                    localStorage.setItem('caddie_ai_memory', JSON.stringify(this.memory));
+                    console.log('💾 AI memory saved');
+                } catch (e) {
+                    console.error('Memory save error:', e);
+                }
+            }
+            
+            addMemoryNote(category, note) {
+                if (!this.memory[category]) return;
+                // Keep last 20 notes per category
+                this.memory[category].push({
+                    note,
+                    date: new Date().toISOString()
+                });
+                if (this.memory[category].length > 20) {
+                    this.memory[category] = this.memory[category].slice(-20);
+                }
+                this.saveMemory();
+            }
+            
+            getMemoryContext() {
+                let memoryStr = '';
+                
+                if (this.memory.playerNotes.length > 0) {
+                    const recentNotes = this.memory.playerNotes.slice(-5).map(n => n.note).join('; ');
+                    memoryStr += `\n\nPlayer Notes from previous sessions: ${recentNotes}`;
+                }
+                
+                if (this.memory.tendencies.length > 0) {
+                    const tendencies = this.memory.tendencies.slice(-5).map(n => n.note).join('; ');
+                    memoryStr += `\nPlayer tendencies: ${tendencies}`;
+                }
+                
+                if (this.memory.swingTips.length > 0) {
+                    const tips = this.memory.swingTips.slice(-3).map(n => n.note).join('; ');
+                    memoryStr += `\nRecent tips discussed: ${tips}`;
+                }
+                
+                if (this.memory.roundSummaries.length > 0) {
+                    const lastRound = this.memory.roundSummaries.slice(-1)[0];
+                    memoryStr += `\nLast round summary: ${lastRound.note}`;
+                }
+                
+                if (this.memory.preferences.length > 0) {
+                    const prefs = this.memory.preferences.slice(-5).map(n => n.note).join('; ');
+                    memoryStr += `\nPlayer preferences: ${prefs}`;
+                }
+                
+                return memoryStr;
+            }
+            
+            async generateMemoryUpdate(conversationSlice) {
+                // Every 10 messages, ask AI to extract key notes
+                try {
+                    const response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            model: 'claude-haiku-4-5-20251001',
+                            max_tokens: 300,
+                            system: `Extract key golf notes about this player from the conversation. Return ONLY a JSON object with these arrays (each item is a short string):
+{"playerNotes": ["note1"], "tendencies": ["tendency1"], "swingTips": ["tip1"], "preferences": ["pref1"]}
+Only include categories that have new info. Keep notes brief (under 15 words each).`,
+                            messages: [{
+                                role: 'user',
+                                content: `Conversation to analyze:\n${conversationSlice.map(m => `${m.role}: ${m.content}`).join('\n')}`
+                            }]
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    const text = data.content?.[0]?.text || '';
+                    
+                    // Parse AI response
+                    const jsonMatch = text.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const notes = JSON.parse(jsonMatch[0]);
+                        for (const [category, items] of Object.entries(notes)) {
+                            if (Array.isArray(items) && this.memory[category]) {
+                                items.forEach(note => this.addMemoryNote(category, note));
+                            }
+                        }
+                        console.log('🧠 Memory updated from conversation');
+                    }
+                } catch (e) {
+                    console.log('Memory update skipped:', e.message);
+                }
+            }
+            
+            async generateRoundSummary(roundData) {
+                try {
+                    const response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            model: 'claude-haiku-4-5-20251001',
+                            max_tokens: 200,
+                            system: 'Summarize this golf round in 2-3 sentences. Focus on what went well, what to improve, and key stats. Be specific.',
+                            messages: [{
+                                role: 'user',
+                                content: `Round data: ${JSON.stringify(roundData)}\nConversation highlights: ${this.conversationHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n')}`
+                            }]
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    const summary = data.content?.[0]?.text || '';
+                    if (summary) {
+                        this.addMemoryNote('roundSummaries', summary);
+                        console.log('📝 Round summary saved');
+                    }
+                } catch (e) {
+                    console.log('Round summary skipped:', e.message);
+                }
+            }
 
             async ask(userMessage, context = {}) {
                 console.log('🤖 Asking Claude AI:', userMessage);
                 
-                // Build system context from game state
-                const systemContext = this.buildContext(context);
+                // Build system context from game state + memory
+                const systemContext = this.buildContext(context) + this.getMemoryContext();
                 
                 // Add user message to conversation
                 this.conversationHistory.push({
                     role: 'user',
                     content: userMessage
                 });
+                
+                this.messageCount++;
                 
                 try {
                     const response = await fetch(this.endpoint, {
@@ -485,8 +633,8 @@
                             'content-type': 'application/json'
                         },
                         body: JSON.stringify({
-                            model: 'claude-sonnet-4-20250514',
-                            max_tokens: 500,
+                            model: 'claude-haiku-4-5-20251001',
+                            max_tokens: 300,
                             system: systemContext,
                             messages: this.conversationHistory.slice(-10)
                         })
@@ -515,30 +663,26 @@
                         content: aiResponse
                     });
                     
+                    // Every 10 messages, save memory in background
+                    if (this.messageCount % 10 === 0) {
+                        this.generateMemoryUpdate(this.conversationHistory.slice(-10));
+                    }
+                    
                     return aiResponse;
                     
                 } catch (error) {
                     console.error('❌ Claude API Error:', error);
-                    console.error('Error name:', error.name);
-                    console.error('Error message:', error.message);
-                    console.error('Error stack:', error.stack);
                     
-                    // Show detailed error to user
-                    let userMessage = '';
-                    
+                    let errMsg = '';
                     if (error.message.includes('401')) {
-                        userMessage = `API key rejected (401). Key format looks ok but Anthropic says it's invalid. Try creating a fresh key at console.anthropic.com/settings/keys`;
+                        errMsg = "API key issue. Check your Vercel settings.";
                     } else if (error.message.includes('429')) {
-                        userMessage = "Rate limit hit. Wait 60 seconds and try again.";
-                    } else if (error.message.includes('Failed to fetch') || error.message.includes('Load failed')) {
-                        userMessage = `Network error: ${error.message}. This might be Safari blocking the request. Try: (1) Wait 10 minutes for new key to activate, (2) Check you're on WiFi/cellular, (3) Try on desktop browser first.`;
-                    } else if (error.message.includes('NetworkError')) {
-                        userMessage = `Safari is blocking the API request. Try enabling Cross-Site Tracking in Settings → Safari → Privacy → Allow Cross-Site Tracking (temporarily).`;
+                        errMsg = "Rate limit hit. Give me a sec and try again.";
                     } else {
-                        userMessage = `Unexpected error: ${error.name} - ${error.message}. Check console for details.`;
+                        errMsg = "Having trouble connecting. Check your signal.";
                     }
                     
-                    return userMessage;
+                    return errMsg;
                 }
             }
 
@@ -1164,14 +1308,31 @@ Current Game State:`;
                         // Use custom rate or get from storage
                         const savedRate = window.app?.storage?.data?.profile?.voiceSpeed || 1.0;
                         utterance.rate = customRate || savedRate;
-                        utterance.pitch = 1;
+                        utterance.pitch = 0.95; // Slightly lower pitch sounds more natural
                         utterance.volume = 1;
                         
-                        // Use a more reliable voice on iOS if available
+                        // Pick the best available voice on iOS
                         const voices = window.speechSynthesis.getVoices();
-                        const preferredVoice = voices.find(v => v.lang.startsWith('en-US')) || voices[0];
-                        if (preferredVoice) {
-                            utterance.voice = preferredVoice;
+                        // Prefer enhanced/premium voices (Samantha, Aaron, etc.)
+                        const preferredNames = ['Samantha', 'Aaron', 'Nicky', 'Alex', 'Daniel', 'Karen'];
+                        let bestVoice = null;
+                        
+                        // First try: find a premium/enhanced voice
+                        for (const name of preferredNames) {
+                            bestVoice = voices.find(v => v.name.includes(name) && v.lang.startsWith('en'));
+                            if (bestVoice) break;
+                        }
+                        
+                        // Second try: any en-US voice
+                        if (!bestVoice) {
+                            bestVoice = voices.find(v => v.lang === 'en-US') || 
+                                       voices.find(v => v.lang.startsWith('en')) || 
+                                       voices[0];
+                        }
+                        
+                        if (bestVoice) {
+                            utterance.voice = bestVoice;
+                            console.log('🗣️ Using voice:', bestVoice.name);
                         }
                         
                         utterance.onstart = () => {
@@ -1911,6 +2072,24 @@ Current Game State:`;
                     if (lower.includes('wind') || lower.includes('windy')) {
                         hole.conditions = hole.conditions || {};
                         hole.conditions.windy = true;
+                    }
+                    
+                    // End round detection
+                    if (lower.includes('end round') || lower.includes('finish round') || lower.includes('done for today') || lower.includes('that\'s it')) {
+                        // Save round and generate summary
+                        const round = this.storage.data.currentRound;
+                        if (round && round.holes.length > 0) {
+                            // Save round to history
+                            this.storage.data.rounds.push({...round});
+                            this.storage.data.stats.totalRounds++;
+                            this.storage.save();
+                            
+                            // Generate AI round summary in background
+                            this.ai.generateRoundSummary(round);
+                            
+                            // Also save conversation memory
+                            this.ai.generateMemoryUpdate(this.ai.conversationHistory.slice(-10));
+                        }
                     }
                 }
 
