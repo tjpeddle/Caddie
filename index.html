@@ -314,10 +314,14 @@
         </div>
         
         <!-- Bottom Actions -->
-        <div class="bottom-actions" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="bottom-actions" style="grid-template-columns: repeat(3, 1fr);">
             <button class="action-btn" id="statsBtn">📈 My Game</button>
+            <button class="action-btn" id="greenReadBtn">📸 Green Read</button>
             <button class="action-btn" id="historyBtn">🏌️ History</button>
         </div>
+        
+        <!-- Hidden camera input -->
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
         
     </div>
 
@@ -852,6 +856,103 @@ Current Game State:`;
             resetConversation() {
                 this.conversationHistory = [];
                 console.log('🔄 AI conversation reset');
+            }
+            
+            // Green Read with photo
+            async greenRead(imageBase64, context = {}) {
+                console.log('📸 Sending green photo for read');
+                
+                const stimp = context.stimp || 9;
+                const holeNum = context.currentHole?.number || '?';
+                const courseName = context.course || 'unknown course';
+                const playerNotes = context.courseNotes || [];
+                
+                let prompt = `You are an expert caddie analyzing a photo of a putting green. Hole ${holeNum} at ${courseName}. Stimp is ${stimp}.
+
+Look at this photo carefully and determine:
+1. Estimated distance from ball to pin in FEET
+2. Estimated slope percentage (1-5%)
+3. Break direction: "left-to-right" or "right-to-left" or "straight"
+4. Elevation: "uphill" or "downhill" or "level"
+5. Any tiers or ridges between ball and hole
+6. A description of the green shape and slopes you can see
+
+IMPORTANT: After your brief spoken description (1-2 sentences about what you see), you MUST include a [DATA] block with these fields:
+- putt_feet: estimated distance in feet (number)
+- putt_slope: estimated slope percentage (number)  
+- putt_break: "left-to-right" or "right-to-left" or "straight"
+- putt_elevation: "uphill" or "downhill" or "level"
+- course_note: description of the green shape/slopes for future reference
+- state: "green"
+
+Example response:
+Looks like about 18 feet, slightly uphill with a right-to-left break. There's a subtle ridge about halfway.
+[DATA]{"putt_feet":18,"putt_slope":2,"putt_break":"right-to-left","putt_elevation":"uphill","course_note":"Subtle ridge through middle of green. Back half slopes right to left. Front is relatively flat.","state":"green"}`;
+
+                if (playerNotes.length > 0) {
+                    prompt += `\n\nPlayer's notes about this green from previous rounds: ${playerNotes.join('. ')}`;
+                }
+                
+                try {
+                    const response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            model: 'claude-haiku-4-5-20251001',
+                            max_tokens: 400,
+                            messages: [{
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'image',
+                                        source: {
+                                            type: 'base64',
+                                            media_type: 'image/jpeg',
+                                            data: imageBase64
+                                        }
+                                    },
+                                    { type: 'text', text: prompt }
+                                ]
+                            }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    let fullResponse = '';
+                    for (const block of data.content) {
+                        if (block.type === 'text') fullResponse += block.text;
+                    }
+                    
+                    // Parse [DATA] block
+                    let gameData = null;
+                    let spokenResponse = fullResponse;
+                    
+                    const dataMatch = fullResponse.match(/\[DATA\]\s*(\{[\s\S]*?\})\s*$/);
+                    if (dataMatch) {
+                        try {
+                            gameData = JSON.parse(dataMatch[1]);
+                            spokenResponse = fullResponse.replace(/\[DATA\][\s\S]*$/, '').trim();
+                        } catch (e) {
+                            console.log('⚠️ Could not parse DATA block');
+                        }
+                    }
+                    
+                    // Add to conversation history
+                    this.conversationHistory.push(
+                        { role: 'user', content: '[Sent photo of green for putting read]' },
+                        { role: 'assistant', content: fullResponse }
+                    );
+                    
+                    return { spoken: spokenResponse, gameData };
+                    
+                } catch (error) {
+                    console.error('❌ Green read error:', error);
+                    return { spoken: "Couldn't process the photo. Give me your distance and break and I'll calculate it.", gameData: null };
+                }
             }
         }
 
@@ -2191,6 +2292,8 @@ Current Game State:`;
                 document.getElementById('voiceOrb').addEventListener('click', () => this.handleVoice());
                 document.getElementById('statsBtn').addEventListener('click', () => this.speakStats());
                 document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
+                document.getElementById('greenReadBtn').addEventListener('click', () => this.startGreenRead());
+                document.getElementById('cameraInput').addEventListener('change', (e) => this.processGreenPhoto(e));
                 
                 // 🎧 SHOKZ BUTTON INTEGRATION
                 // Your Shokz play/pause button controls the microphone!
@@ -2628,6 +2731,125 @@ Current Game State:`;
                 
                 const dist = this.gps.getDistance();
                 document.getElementById('distanceDisplay').textContent = dist < 100 ? `${dist}y` : Math.round(dist/10)*10;
+            }
+
+            // ==========================================
+            // GREEN READ WITH CAMERA
+            // ==========================================
+            startGreenRead() {
+                document.getElementById('cameraInput').click();
+            }
+            
+            async processGreenPhoto(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                // Show processing state
+                document.getElementById('caddieMessage').textContent = '📸 Reading the green...';
+                document.getElementById('voiceStatus').textContent = 'Analyzing photo';
+                
+                try {
+                    // Resize image to save bandwidth (max 800px)
+                    const base64 = await this.resizeAndConvert(file, 800);
+                    
+                    const currentHole = this.storage.getCurrentHole();
+                    const courseName = this.storage.data.currentRound?.course;
+                    const holeNum = currentHole?.number;
+                    const stimp = this.storage.data.profile.stimp || 9;
+                    
+                    const context = {
+                        stimp: stimp,
+                        currentHole: currentHole,
+                        course: courseName,
+                        courseNotes: courseName && holeNum ? this.storage.getCourseNotes(courseName, holeNum) : []
+                    };
+                    
+                    const result = await this.ai.greenRead(base64, context);
+                    
+                    // Process any game data (course notes about green shape)
+                    if (result.gameData) {
+                        this.storage.processGameData(result.gameData);
+                        
+                        // If Claude returned putting data, run Vector Putting calculator
+                        const gd = result.gameData;
+                        if (gd.putt_feet && gd.putt_break && gd.putt_break !== 'straight') {
+                            const slope = gd.putt_slope || 2;
+                            const elevation = gd.putt_elevation || 'level';
+                            
+                            const aimPoint = this.vectorPutting.getAimPoint(
+                                gd.putt_feet, slope, stimp, gd.putt_break, elevation
+                            );
+                            
+                            // Combine Claude's read with Vector Putting math
+                            let fullRead = result.spoken;
+                            fullRead += ` Vector read: ${aimPoint.description}.`;
+                            if (elevation === 'uphill') fullRead += ' Hit it firm, 18 inches past.';
+                            else if (elevation === 'downhill') fullRead += ' Soft touch, let gravity do the work.';
+                            else fullRead += ' Die it 12 inches past.';
+                            
+                            await this.voice.speak(fullRead);
+                            console.log(`🎯 Vector Putting: ${gd.putt_feet}ft, ${slope}%, ${gd.putt_break}, ${elevation} → ${aimPoint.description}`);
+                        } else if (gd.putt_feet && gd.putt_break === 'straight') {
+                            let fullRead = result.spoken;
+                            fullRead += ` Straight putt, center of the cup.`;
+                            if (gd.putt_elevation === 'uphill') fullRead += ' Firm, 18 inches past.';
+                            else if (gd.putt_elevation === 'downhill') fullRead += ' Easy does it.';
+                            else fullRead += ' Die it 12 past.';
+                            
+                            await this.voice.speak(fullRead);
+                        } else {
+                            // No putting data extracted, just speak Claude's read
+                            await this.voice.speak(result.spoken);
+                        }
+                    } else {
+                        await this.voice.speak(result.spoken);
+                    }
+                    
+                } catch (err) {
+                    console.error('Green read error:', err);
+                    await this.voice.speak("Couldn't read that photo. Try again or just give me the distance and break.");
+                }
+                
+                // Reset file input so same photo can be retaken
+                event.target.value = '';
+            }
+            
+            resizeAndConvert(file, maxSize) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.width;
+                            let h = img.height;
+                            
+                            if (w > maxSize || h > maxSize) {
+                                if (w > h) {
+                                    h = Math.round(h * maxSize / w);
+                                    w = maxSize;
+                                } else {
+                                    w = Math.round(w * maxSize / h);
+                                    h = maxSize;
+                                }
+                            }
+                            
+                            canvas.width = w;
+                            canvas.height = h;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            
+                            // Get base64 without the data:image/jpeg;base64, prefix
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                            const base64 = dataUrl.split(',')[1];
+                            resolve(base64);
+                        };
+                        img.onerror = reject;
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
             }
 
             async speakStats() {
