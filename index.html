@@ -636,7 +636,7 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                             model: 'claude-haiku-4-5-20251001',
                             max_tokens: 300,
                             system: systemContext,
-                            messages: this.conversationHistory.slice(-10)
+                            messages: this.conversationHistory.slice(-14)
                         })
                     });
 
@@ -650,17 +650,33 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                     console.log('✅ Claude AI responded');
                     
                     // Extract text response
-                    let aiResponse = '';
+                    let fullResponse = '';
                     for (const block of data.content) {
                         if (block.type === 'text') {
-                            aiResponse += block.text;
+                            fullResponse += block.text;
                         }
                     }
                     
-                    // Add to conversation history
+                    // Parse [DATA] block if present
+                    let gameData = null;
+                    let spokenResponse = fullResponse;
+                    
+                    const dataMatch = fullResponse.match(/\[DATA\]\s*(\{[\s\S]*?\})\s*$/);
+                    if (dataMatch) {
+                        try {
+                            gameData = JSON.parse(dataMatch[1]);
+                            // Strip [DATA] from spoken text
+                            spokenResponse = fullResponse.replace(/\[DATA\][\s\S]*$/, '').trim();
+                            console.log('📊 Game data extracted:', gameData);
+                        } catch (e) {
+                            console.log('⚠️ Could not parse DATA block:', e.message);
+                        }
+                    }
+                    
+                    // Store full response (with data) in history so Claude remembers
                     this.conversationHistory.push({
                         role: 'assistant',
-                        content: aiResponse
+                        content: fullResponse
                     });
                     
                     // Every 10 messages, save memory in background
@@ -668,21 +684,20 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                         this.generateMemoryUpdate(this.conversationHistory.slice(-10));
                     }
                     
-                    return aiResponse;
+                    // Return both spoken text and game data
+                    return { spoken: spokenResponse, gameData };
                     
                 } catch (error) {
                     console.error('❌ Claude API Error:', error);
                     
                     let errMsg = '';
-                    if (error.message.includes('401')) {
-                        errMsg = "API key issue. Check your Vercel settings.";
-                    } else if (error.message.includes('429')) {
-                        errMsg = "Rate limit hit. Give me a sec and try again.";
+                    if (error.message.includes('429')) {
+                        errMsg = "Rate limit hit. Give me a sec.";
                     } else {
                         errMsg = "Having trouble connecting. Check your signal.";
                     }
                     
-                    return errMsg;
+                    return { spoken: errMsg, gameData: null };
                 }
             }
 
@@ -697,49 +712,116 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                     conditions
                 } = context;
                 
-                let systemPrompt = `You are an expert golf caddie having a natural conversation with your player. You're walking the course together on a REAL golf course RIGHT NOW. Your style:
-- Talk like a real caddie: casual, confident, supportive, like a buddy
-- Keep responses SHORT (1-3 sentences max) unless they ask you to explain something
-- You know Vector Putting (Zero Break Line, Gravity Vectors, slope %, stimp, aim points)
-- You know golf strategy, course management, club selection, mental game
-- Give SPECIFIC advice based on their actual club distances below — never guess
-- Remember everything they tell you in this conversation
-- When they tell you club distances, acknowledge and remember them
-- When they ask about a club, reference the distances below
-- Be encouraging but honest — if they're struggling, help them refocus
+                let systemPrompt = `You are an expert AI golf caddie walking the course with your player. You talk naturally like a real caddie — casual, confident, supportive.
 
-IMPORTANT: The game state below comes from REAL GPS and real tracking on the player's phone. The distances, hole numbers, and scores are REAL — trust them completely. You DO know where they are. If you see a distance, it's their actual distance. Never say you don't know their location or can't see them — you have their live data.
+CRITICAL RULES:
+1. Keep responses SHORT (1-3 sentences). You're talking through headphones on the course.
+2. You know Vector Putting, course management, club selection, mental game.
+3. Use the player's ACTUAL club distances below for recommendations.
+4. Player tee preferences: Oak Hollow = Mixed (Blue/White), Blair Park = Blue/White (6,009), Jamestown = Gold, River Landing = back tees. Use the yardage shown for each hole.
+5. You do NOT have GPS — ask the player for distances when needed.
+5. ALWAYS end EVERY response with a hidden data block to track the round (explained below).
+
+TRACKING SYSTEM — THIS IS ESSENTIAL:
+After your spoken response, ALWAYS add a data block on a new line starting with [DATA] containing a JSON object. This tracks the round. Include ONLY fields that changed based on what the player just said. Possible fields:
+
+[DATA]{"score":5,"fairway":true,"gir":true,"putts":2,"updown":false,"updown_attempt":false,"club":"7 Iron","distance":155,"penalty":0,"state":"tee","hole_complete":true,"new_course":"Oak Hollow","new_hole":1,"player_distance":165}
+
+Field meanings:
+- score: their score on the hole (only when hole is done)
+- fairway: true/false if they hit the fairway off the tee
+- gir: true/false green in regulation
+- putts: number of putts this hole
+- updown: true if they got up and down (chipped on and 1-putted)
+- updown_attempt: true if they missed the green and are trying to save par
+- club: club they just said they're hitting
+- distance: distance of the shot
+- penalty: number of penalty strokes
+- state: current position (tee/fairway/rough/bunker/green/fringe)
+- hole_complete: true when the hole is finished
+- new_course: course name when starting a round
+- new_hole: hole number when starting or moving to next hole
+- player_distance: distance to pin the player told you
+- course_note: when the player teaches you something about the hole — hazards, trees, slopes, tips, where to miss, anything about the course layout. Write a SHORT note to remember. Examples: "Big oak tree right side at 200", "Green slopes hard back to front", "Layup to 100, water guards green front-right", "Bunker is blind from fairway". Only include this when the player is clearly describing the hole or course, NOT for general golf chat.
+
+Examples of what to track:
+- "I hit the fairway" → [DATA]{"fairway":true,"state":"fairway"}
+- "I'm on the green in 2" → [DATA]{"gir":true,"state":"green"}
+- "I two-putted for par" → [DATA]{"putts":2,"score":4,"hole_complete":true}
+- "I chipped on and made the putt" → [DATA]{"updown":true,"updown_attempt":true,"putts":1}
+- "I got a bogey, 3 putts" → [DATA]{"putts":3,"score":5,"hole_complete":true}
+- "Playing Oak Hollow hole 1" → [DATA]{"new_course":"Oak Hollow","new_hole":1}
+- "I have 155 to the pin" → [DATA]{"player_distance":155}
+- "Hit my 7 iron" → [DATA]{"club":"7 Iron"}
+- "There's water on the left about 230 out" → [DATA]{"course_note":"Water left at 230 off tee"}
+- "This green is really fast and slopes toward the water" → [DATA]{"course_note":"Green fast, slopes toward water"}
+- "The fairway kicks everything right here" → [DATA]{"course_note":"Fairway kicks right"}
+- Just chatting about strategy → [DATA]{}
+
+ALWAYS include the [DATA] line even if empty. The app strips it before speaking.
 
 Current Game State:`;
 
-                if (course) systemPrompt += `\n- Course: ${course} (REAL course, playing right now)`;
-                if (currentHole) {
-                    systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}, Position: ${currentHole.state || 'tee'}`;
-                    if (currentHole.shots?.length > 0) {
-                        const clubs = currentHole.shots.map(s => s.club).join(', ');
-                        systemPrompt += `\n- Shots this hole: ${clubs} (${currentHole.shots.length} shots)`;
+                if (course) systemPrompt += `\n- Course: ${course}`;
+                
+                // Inject course knowledge if we have it
+                if (course && context.courseHoleData) {
+                    const hd = context.courseHoleData;
+                    if (hd.courseOverview && !currentHole) {
+                        systemPrompt += `\n- Course info: ${hd.courseOverview}`;
+                    }
+                    if (hd.notes) {
+                        const yards = hd.yardage || Math.round((hd.blue + hd.white) / 2);
+                        systemPrompt += `\n- THIS HOLE: Par ${hd.par}, ${yards} yards. Hdcp ${hd.hdcp}. ${hd.notes}`;
                     }
                 }
-                if (distance) systemPrompt += `\n- GPS Distance to pin: ${distance} yards (REAL measurement)`;
-                else systemPrompt += `\n- Distance to pin: unknown (ask the player how far they are)`;
+                
+                // Inject player's learned course notes for this hole
+                if (course && currentHole) {
+                    const playerNotes = context.courseNotes || [];
+                    if (playerNotes.length > 0) {
+                        systemPrompt += `\n- PLAYER'S OWN NOTES (learned from previous rounds): ${playerNotes.join('. ')}`;
+                    }
+                }
+                
+                if (currentHole) {
+                    systemPrompt += `\n- Hole ${currentHole.number}, Par ${currentHole.par || 4}`;
+                    if (currentHole.stats) {
+                        const s = currentHole.stats;
+                        if (s.fairway !== undefined) systemPrompt += `, Fairway: ${s.fairway ? 'yes' : 'no'}`;
+                        if (s.clubs?.length) systemPrompt += `, Clubs used: ${s.clubs.join(', ')}`;
+                        if (s.state) systemPrompt += `, Position: ${s.state}`;
+                    }
+                }
+                if (distance) systemPrompt += `\n- Last known distance: ${distance} yards`;
                 if (score !== undefined && holesPlayed) {
                     const par = holesPlayed * 4;
                     const diff = score - par;
-                    systemPrompt += `\n- Score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed})`;
+                    systemPrompt += `\n- Total score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed} holes)`;
                 }
                 if (conditions?.windy) systemPrompt += `\n- Wind present`;
+                
+                // Round stats so far
+                if (context.roundStats) {
+                    const rs = context.roundStats;
+                    systemPrompt += `\n\nRound Stats So Far:`;
+                    if (rs.fairways !== undefined) systemPrompt += `\n- Fairways: ${rs.fairways}/${rs.fairwayAttempts}`;
+                    if (rs.girs !== undefined) systemPrompt += `\n- Greens in Reg: ${rs.girs}/${holesPlayed}`;
+                    if (rs.totalPutts !== undefined) systemPrompt += `\n- Total Putts: ${rs.totalPutts} (${(rs.totalPutts/Math.max(1,holesPlayed)).toFixed(1)}/hole)`;
+                    if (rs.upDowns !== undefined) systemPrompt += `\n- Up & Downs: ${rs.upDowns}/${rs.upDownAttempts}`;
+                }
                 
                 // ALWAYS include full club bag
                 if (context.playerClubs) {
                     const clubs = context.playerClubs;
-                    systemPrompt += `\n\nPlayer's Club Distances (MEMORIZE THESE):`;
+                    systemPrompt += `\n\nPlayer's Club Distances:`;
                     for (const [club, dist] of Object.entries(clubs)) {
                         systemPrompt += `\n  ${club}: ${dist} yards`;
                     }
                 }
                 
                 if (!course && !currentHole) {
-                    systemPrompt += `\n\nNo round started yet. Help them get set up — ask what course and what hole they're starting on. If they want to set up clubs, walk them through it naturally.`;
+                    systemPrompt += `\n\nNo round started yet. Help them get set up — ask what course and what hole they're starting on.`;
                 }
 
                 return systemPrompt;
@@ -906,16 +988,164 @@ Current Game State:`;
             save() {
                 localStorage.setItem(this.key, JSON.stringify(this.data));
             }
+            
+            // ==========================================
+            // COURSE KNOWLEDGE DATABASE
+            // ==========================================
+            getCourseData(courseName) {
+                const name = courseName.toLowerCase();
+                
+                if (name.includes('oak hollow')) {
+                    return {
+                        name: 'Oak Hollow Golf Course',
+                        designer: 'Pete Dye',
+                        par: 72,
+                        rating: 72.1,
+                        slope: 131,
+                        grass: 'Bermuda fairways, bent grass greens',
+                        playerTees: 'Mixed (Blue/White)',
+                        overview: 'Pete Dye design with pot bunkers, railroad ties, small undulating greens, and peninsula greens. Rewards strategy and accuracy over power. Lake comes into play on several holes.',
+                        holes: {
+                            1:  { par: 4, yardage: 310, blue: 328, white: 300, hdcp: 14, notes: 'Short par 4. Accuracy off the tee. Small green.' },
+                            2:  { par: 5, yardage: 456, blue: 473, white: 408, hdcp: 10, notes: 'Reachable par 5 for big hitters. Watch the bunkers around the green.' },
+                            3:  { par: 4, yardage: 340, blue: 355, white: 298, hdcp: 12, notes: 'Mid-length par 4. Position off the tee is key.' },
+                            4:  { par: 3, yardage: 157, blue: 170, white: 139, hdcp: 16, notes: 'Par 3 over water. Club selection is everything. Don\'t be short.' },
+                            5:  { par: 5, yardage: 435, blue: 481, white: 411, hdcp: 6, notes: 'Long par 5. Beautiful views of the lake. Birdie opportunity if you find the fairway.' },
+                            6:  { par: 4, yardage: 359, blue: 420, white: 345, hdcp: 2, notes: 'SIGNATURE HOLE. Dogleg around the lake. Island tee from the tips. Risk-reward — brave line over water cuts distance but miss is wet.' },
+                            7:  { par: 3, yardage: 143, blue: 155, white: 117, hdcp: 18, notes: 'Short par 3. Don\'t overthink it. Hit the center of the green.' },
+                            8:  { par: 4, yardage: 394, blue: 412, white: 377, hdcp: 4, notes: 'Long par 4. Need a solid drive. Green is well-protected.' },
+                            9:  { par: 4, yardage: 321, blue: 332, white: 289, hdcp: 8, notes: 'Short par 4 to close the front. Birdie chance if you\'re smart off the tee.' },
+                            10: { par: 5, yardage: 566, blue: 588, white: 524, hdcp: 1, notes: 'Longest hole on the course. Three-shot hole for most. Find the fairway and play smart.' },
+                            11: { par: 4, yardage: 416, blue: 437, white: 379, hdcp: 3, notes: 'TOUGHEST HOLE. Long par 4. Triple-tiered green on the water\'s edge. Need a perfect tee shot. Don\'t miss the green right or long.' },
+                            12: { par: 4, yardage: 353, blue: 381, white: 337, hdcp: 7, notes: 'Medium par 4. Steady hole. Find the fairway.' },
+                            13: { par: 3, yardage: 164, blue: 194, white: 130, hdcp: 15, notes: 'Long par 3 from the blues. Take enough club. Miss long is better than short.' },
+                            14: { par: 4, yardage: 365, blue: 378, white: 343, hdcp: 9, notes: 'Solid par 4. Good scoring hole if you hit the fairway.' },
+                            15: { par: 5, yardage: 514, blue: 526, white: 493, hdcp: 5, notes: 'Par 5. Birdie opportunity. Be aggressive if you\'re in the fairway.' },
+                            16: { par: 3, yardage: 152, blue: 176, white: 125, hdcp: 17, notes: 'Par 3 with elevation. Check the pin position. Pot bunkers Dye-style.' },
+                            17: { par: 4, yardage: 301, blue: 310, white: 273, hdcp: 13, notes: 'Short par 4. Driver not needed. Position off the tee, wedge in.' },
+                            18: { par: 4, yardage: 409, blue: 448, white: 325, hdcp: 11, notes: 'Long finishing par 4. Strong finish needed. Don\'t go right or long.' }
+                        }
+                    };
+                }
+                
+                if (name.includes('blair park') || name.includes('blair')) {
+                    return {
+                        name: 'Blair Park Golf Course',
+                        designer: 'Classic design (1931)',
+                        par: 72,
+                        rating: 70.8,
+                        slope: 122,
+                        grass: 'Bermuda fairways, bent grass greens',
+                        playerTees: 'Blue/White (6,009)',
+                        overview: 'Traditional layout. Creeks cross more than half the holes. Modest but strategic bunkering. Open-fronted greens favor bump-and-run. Go-for-broke opportunities but punishes errant gamblers. Power lines on 2 holes (free relief).',
+                        holes: {
+                            1:  { par: 5, yardage: 529, blue: 550, white: 508, hdcp: 1, notes: 'Opens with a long par 5 — #1 handicap hole. Creek in play. Find the fairway, play smart, don\'t force it.' },
+                            2:  { par: 5, yardage: 462, blue: 482, white: 442, hdcp: 13, notes: 'Second par 5 in a row. More reachable. Birdie opportunity early.' },
+                            3:  { par: 4, yardage: 398, blue: 412, white: 384, hdcp: 1, notes: 'Long tough par 4. #1 handicap hole. Creek crossing. Need your best drive.' },
+                            4:  { par: 3, blue: 183, white: 162, hdcp: 17, notes: 'Par 3. Take enough club. Green has open front — bump and run works.' },
+                            5:  { par: 4, blue: 389, white: 370, hdcp: 3, notes: 'Solid par 4. Creek in play. Stay out of the rough — it\'s thick.' },
+                            6:  { par: 4, blue: 371, white: 346, hdcp: 5, notes: 'Mid-length par 4. Good birdie chance if you find the short grass.' },
+                            7:  { par: 5, blue: 498, white: 477, hdcp: 9, notes: 'Third par 5 on the front. Reachable in two for longer hitters.' },
+                            8:  { par: 3, blue: 186, white: 162, hdcp: 15, notes: 'Par 3. Similar to #4. Open front green.' },
+                            9:  { par: 4, blue: 300, white: 270, hdcp: 11, notes: 'Short par 4. Don\'t need driver. Position and wedge in.' },
+                            10: { par: 4, blue: 410, white: 388, hdcp: 4, notes: 'Long par 4 to start the back. Creek in play again.' },
+                            11: { par: 4, blue: 396, white: 375, hdcp: 6, notes: 'Another solid par 4. Keep it in the fairway.' },
+                            12: { par: 3, blue: 188, white: 166, hdcp: 18, notes: 'Easiest rated hole. Par 3. Should be a par.' },
+                            13: { par: 4, blue: 347, white: 326, hdcp: 8, notes: 'Shorter par 4. Scoring opportunity.' },
+                            14: { par: 4, blue: 400, white: 380, hdcp: 2, notes: '#2 handicap. Long par 4. One of the toughest on the back.' },
+                            15: { par: 4, blue: 314, white: 295, hdcp: 14, notes: 'Short par 4. Smart play off the tee. Birdie hole.' },
+                            16: { par: 4, blue: 348, white: 328, hdcp: 10, notes: 'Medium par 4. Gentle mounding around green — good chipping touch needed.' },
+                            17: { par: 3, blue: 179, white: 158, hdcp: 16, notes: 'Par 3. Last short hole. Solid par and move on.' },
+                            18: { par: 5, blue: 496, white: 464, hdcp: 12, notes: 'Finishing par 5. Birdie chance to end the round strong.' }
+                        }
+                    };
+                }
+                
+                if (name.includes('river landing') || name.includes('sandy ridge')) {
+                    return {
+                        name: 'River Landing at Sandy Ridge',
+                        designer: 'Gene Hamm',
+                        par: 36,
+                        rating: null,
+                        slope: null,
+                        grass: 'Bermuda fairways, bent grass greens',
+                        overview: '9-hole course in Colfax near High Point. Rolling terrain, well maintained. Some of the best greens in the Triad. Water on holes 7 and 9. Thick rough — stay in the fairway. One par 3, one par 5, seven par 4s. Par 36, plays about 3,067 from the back.',
+                        holes: {
+                            1: { par: 4, blue: 340, white: 310, hdcp: 6, notes: 'Opening par 4. Ease into the round. Find the fairway.' },
+                            2: { par: 4, blue: 360, white: 330, hdcp: 4, notes: 'Par 4. Rolling terrain. Trust your club selection.' },
+                            3: { par: 5, blue: 504, white: 470, hdcp: 2, notes: 'Longest hole on the course. Only par 5. Birdie opportunity with three smart shots.' },
+                            4: { par: 4, blue: 340, white: 310, hdcp: 8, notes: 'Shorter par 4. Good scoring hole.' },
+                            5: { par: 4, blue: 381, white: 350, hdcp: 1, notes: '#1 handicap hole. Toughest on the course. Need your best here.' },
+                            6: { par: 3, blue: 170, white: 145, hdcp: 9, notes: 'Only par 3. Easiest rated hole. Take dead aim.' },
+                            7: { par: 4, blue: 350, white: 320, hdcp: 5, notes: 'WATER in play. Be smart with club selection. Don\'t go at pins near the water.' },
+                            8: { par: 4, blue: 330, white: 300, hdcp: 7, notes: 'Par 4. Stay focused heading toward the finish.' },
+                            9: { par: 4, blue: 350, white: 320, hdcp: 3, notes: 'Finishing hole. WATER in play. Play safe off the tee. Par is a good score here.' }
+                        }
+                    };
+                }
+                
+                if (name.includes('jamestown')) {
+                    return {
+                        name: 'Jamestown Park Golf Course',
+                        designer: 'John Townsend / Richard Mandell (renovation)',
+                        par: 72,
+                        rating: 67.8,
+                        slope: 120,
+                        grass: 'Bermuda fairways, bent grass greens',
+                        playerTees: 'Gold',
+                        overview: 'Full 18-hole course near Greensboro/High Point. Tree-lined, accuracy over power. Fairways slope, greens have shelves and tiers — hard greens so expect bounce. Water in play on a few holes. 5,600 yards from gold tees.',
+                        holes: {
+                            1:  { par: 4, yardage: 376, blue: 413, white: 384, hdcp: 8, notes: 'Slight dogleg left. Fairway bunker guards left side. Uphill approach to deep green — bunker left of the greenside. Miss right is safer than left.' },
+                            2:  { par: 5, yardage: 488, blue: 560, white: 527, hdcp: 4, notes: 'Par 5. Tee shot plays slightly downhill, fairway feeds right. Lay up left side. Green is narrow with back shelf, bunker short-left. Reachable in two but approach is uphill and challenging.' },
+                            3:  { par: 4, yardage: 358, blue: 454, white: 424, hdcp: 2, notes: 'Long straight par 4. Generous fairway but finding it is critical. Approach plays uphill to elevated green that narrows at back. Miss right = tough up and down.' },
+                            4:  { par: 3, yardage: 136, blue: 148, white: 143, hdcp: 18, notes: 'Short par 3. Front bunker sits below green level. Green is tiered — slopes back to front. Get on the right tier.' },
+                            5:  { par: 4, yardage: 349, blue: 388, white: 362, hdcp: 6, notes: 'Par 4. Fairway slopes right to left. Large green feeds front to back. Don\'t go long — trouble over the green.' },
+                            6:  { par: 5, yardage: 414, blue: 476, white: 452, hdcp: 14, notes: 'Par 5, plays uphill off tee. Fairway bunker left. Don\'t go right — fairway slopes hard right down to WATER. Green slopes back to front, two front bunkers.' },
+                            7:  { par: 4, yardage: 295, blue: 339, white: 312, hdcp: 10, notes: 'Short scoring par 4. Favor left side off the tee — fairway slopes right. Birdie hole.' },
+                            8:  { par: 3, yardage: 108, blue: 168, white: 144, hdcp: 16, notes: 'Demanding par 3. Green has THREE sections with tiered back-right. Front bunker below green level. Get on the right section or face a tough two-putt.' },
+                            9:  { par: 4, yardage: 294, blue: 355, white: 326, hdcp: 12, notes: 'Straight par 4, tee shot plays uphill. Green slopes back to front with deep bunker front-right. Accuracy on approach is key.' },
+                            10: { par: 4, yardage: 355, blue: 432, white: 405, hdcp: 3, notes: 'Tough start to back 9. Undulating par 4, fairway feeds left. Approach plays uphill to large green — slopes back-right to front-left.' },
+                            11: { par: 4, yardage: 392, blue: 471, white: 443, hdcp: 9, notes: 'Demanding par 4. Sharp dogleg right to left. Fairway slopes left. Uphill approach. Green slopes back to front with tricky back shelf. Short is better than long.' },
+                            12: { par: 5, yardage: 371, blue: 440, white: 412, hdcp: 1, notes: '#1 HANDICAP. Undulating par 5, doglegs right to left. Landing areas feed right. Green slopes front-left to back-right, bunkers both sides. Think your way through this one.' },
+                            13: { par: 3, yardage: 98, blue: 155, white: 125, hdcp: 17, notes: 'Shorter par 3 but demanding. Stay BELOW the hole — green slopes back-left to front-right. Bunkers left and right. Tough from above.' },
+                            14: { par: 4, yardage: 385, blue: 446, white: 419, hdcp: 5, notes: 'Downhill tree-lined par 4. Sharp dogleg right to left. Approach plays downhill to deep green — slopes front-left to back-right. Bunkers left and front-right.' },
+                            15: { par: 5, yardage: 432, blue: 494, white: 467, hdcp: 11, notes: 'Risk/reward par 5. Plays uphill off tee. Favor left side of tree-lined fairway. Birdie chance if you play smart.' },
+                            16: { par: 4, yardage: 283, blue: 336, white: 308, hdcp: 15, notes: 'Short par 4. Accurate tee shot needed — fairway slopes right. Approach slightly uphill, green slopes front-left to back-right. Two front bunkers.' },
+                            17: { par: 3, yardage: 129, blue: 193, white: 155, hdcp: 13, notes: 'Uphill par 3. POND IN FRONT — do NOT come up short, it slopes back to the water. Large green slopes back-right to front-left with small back shelf.' },
+                            18: { par: 4, yardage: 337, blue: 397, white: 378, hdcp: 7, notes: 'Finishing hole. Shorter tree-lined par 4, slightly uphill. Accuracy over distance — fairway slopes left to right. Find the fairway and close it out.' }
+                        }
+                    };
+                }
+                
+                return null; // Unknown course
+            }
+            
+            // Get hole data for current course and hole
+            getHoleData(courseName, holeNumber) {
+                const course = this.getCourseData(courseName);
+                if (!course || !course.holes[holeNumber]) return null;
+                return { ...course.holes[holeNumber], courseOverview: course.overview, courseName: course.name };
+            }
 
             startRound(courseName, holeNumber) {
+                const holeData = this.getHoleData(courseName, holeNumber);
                 this.data.currentRound = {
                     course: courseName,
                     date: new Date().toISOString(),
                     currentHole: {
                         number: holeNumber,
-                        par: this.estimatePar(null),
+                        par: holeData ? holeData.par : 4,
                         shots: [],
-                        state: 'tee'
+                        state: 'tee',
+                        stats: {
+                            fairway: null,
+                            gir: null,
+                            putts: 0,
+                            updown: null,
+                            updown_attempt: false,
+                            clubs: [],
+                            penalties: 0
+                        }
                     },
                     holes: [],
                     score: 0
@@ -926,6 +1156,197 @@ Current Game State:`;
                 }
                 
                 this.save();
+            }
+            
+            // Process game data from Claude's [DATA] block
+            processGameData(gameData) {
+                if (!gameData || Object.keys(gameData).length === 0) return;
+                
+                console.log('📊 Processing game data:', gameData);
+                
+                // Start new round if course/hole specified
+                if (gameData.new_course || gameData.new_hole) {
+                    const course = gameData.new_course || this.data.currentRound?.course || 'Unknown';
+                    const hole = gameData.new_hole || 1;
+                    
+                    // AUTO-SAVE: If there's an existing round with holes played, save it first
+                    if (this.data.currentRound && this.data.currentRound.holes.length > 0 && gameData.new_course) {
+                        console.log('💾 Auto-saving previous round before starting new one');
+                        this.saveRoundToHistory();
+                    }
+                    
+                    if (!this.data.currentRound || gameData.new_course) {
+                        this.startRound(course, hole);
+                    }
+                }
+                
+                if (!this.data.currentRound) return;
+                
+                const currentHole = this.data.currentRound.currentHole;
+                if (!currentHole.stats) {
+                    currentHole.stats = { fairway: null, gir: null, putts: 0, updown: null, updown_attempt: false, clubs: [], penalties: 0 };
+                }
+                
+                // Update distance
+                if (gameData.player_distance) {
+                    currentHole.lastDistance = gameData.player_distance;
+                }
+                
+                // Track club usage
+                if (gameData.club) {
+                    currentHole.stats.clubs.push(gameData.club);
+                    currentHole.shots.push({
+                        club: gameData.club,
+                        distance: gameData.distance || gameData.player_distance || null,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+                
+                // Track stats
+                if (gameData.fairway !== undefined) currentHole.stats.fairway = gameData.fairway;
+                if (gameData.gir !== undefined) currentHole.stats.gir = gameData.gir;
+                if (gameData.putts !== undefined) currentHole.stats.putts = gameData.putts;
+                if (gameData.updown !== undefined) currentHole.stats.updown = gameData.updown;
+                if (gameData.updown_attempt !== undefined) currentHole.stats.updown_attempt = gameData.updown_attempt;
+                if (gameData.penalty) currentHole.stats.penalties += gameData.penalty;
+                if (gameData.state) currentHole.state = gameData.state;
+                
+                // Save course note — player teaching the caddie about the hole
+                if (gameData.course_note && this.data.currentRound) {
+                    this.saveCourseNote(
+                        this.data.currentRound.course,
+                        currentHole.number,
+                        gameData.course_note
+                    );
+                }
+                
+                // Complete the hole
+                if (gameData.hole_complete && gameData.score) {
+                    currentHole.finalScore = gameData.score;
+                    this.data.currentRound.holes.push({...currentHole});
+                    this.data.currentRound.score += gameData.score;
+                    
+                    // AUTO-SAVE: If we just finished hole 18 (or 9), save the round
+                    const holeNum = parseInt(currentHole.number);
+                    if (holeNum >= 18 || (holeNum === 9 && this.data.currentRound.holes.length >= 9)) {
+                        console.log('💾 Auto-saving round after hole ' + holeNum);
+                        this.saveRoundToHistory();
+                    }
+                    
+                    // Move to next hole — get par from course data if available
+                    const nextNum = holeNum + 1;
+                    const nextHoleData = this.getHoleData(this.data.currentRound.course, nextNum);
+                    this.data.currentRound.currentHole = {
+                        number: nextNum,
+                        par: nextHoleData ? nextHoleData.par : 4,
+                        shots: [],
+                        state: 'tee',
+                        stats: {
+                            fairway: null,
+                            gir: null,
+                            putts: 0,
+                            updown: null,
+                            updown_attempt: false,
+                            clubs: [],
+                            penalties: 0
+                        }
+                    };
+                }
+                
+                this.save();
+                console.log('💾 Game data saved');
+            }
+            
+            // Save current round to history
+            saveRoundToHistory() {
+                if (!this.data.currentRound || this.data.currentRound.holes.length === 0) return;
+                
+                this.data.rounds.push({...this.data.currentRound});
+                this.data.stats.totalRounds++;
+                this.save();
+                console.log('📝 Round saved to history (' + this.data.currentRound.holes.length + ' holes)');
+            }
+            
+            // ==========================================
+            // COURSE NOTES — Player teaches the caddie
+            // Stored permanently in localStorage
+            // ==========================================
+            saveCourseNote(courseName, holeNumber, note) {
+                if (!courseName || !holeNumber || !note) return;
+                
+                // Initialize courseNotes storage
+                if (!this.data.courseNotes) this.data.courseNotes = {};
+                
+                const courseKey = courseName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                if (!this.data.courseNotes[courseKey]) this.data.courseNotes[courseKey] = {};
+                if (!this.data.courseNotes[courseKey][holeNumber]) this.data.courseNotes[courseKey][holeNumber] = [];
+                
+                // Don't add duplicate notes
+                const existing = this.data.courseNotes[courseKey][holeNumber];
+                const isDuplicate = existing.some(n => n.toLowerCase() === note.toLowerCase());
+                if (isDuplicate) return;
+                
+                // Keep max 10 notes per hole (oldest drop off)
+                existing.push(note);
+                if (existing.length > 10) existing.shift();
+                
+                this.save();
+                console.log(`📝 Course note saved: ${courseName} #${holeNumber}: "${note}"`);
+            }
+            
+            getCourseNotes(courseName, holeNumber) {
+                if (!this.data.courseNotes || !courseName) return [];
+                
+                const courseKey = courseName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                if (!this.data.courseNotes[courseKey]) return [];
+                if (!this.data.courseNotes[courseKey][holeNumber]) return [];
+                
+                return this.data.courseNotes[courseKey][holeNumber];
+            }
+            
+            getAllCourseNotes(courseName) {
+                if (!this.data.courseNotes || !courseName) return {};
+                
+                const courseKey = courseName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                return this.data.courseNotes[courseKey] || {};
+            }
+            
+            // Calculate round stats from completed holes
+            getRoundStats() {
+                if (!this.data.currentRound) return null;
+                
+                const holes = this.data.currentRound.holes;
+                if (holes.length === 0) return null;
+                
+                let fairways = 0, fairwayAttempts = 0;
+                let girs = 0;
+                let totalPutts = 0;
+                let upDowns = 0, upDownAttempts = 0;
+                
+                holes.forEach(h => {
+                    const stats = h.stats || {};
+                    const par = h.par || 4;
+                    
+                    // Fairways (only on par 4s and 5s)
+                    if (par >= 4) {
+                        fairwayAttempts++;
+                        if (stats.fairway) fairways++;
+                    }
+                    
+                    // GIR
+                    if (stats.gir) girs++;
+                    
+                    // Putts
+                    totalPutts += stats.putts || 0;
+                    
+                    // Up and downs
+                    if (stats.updown_attempt) {
+                        upDownAttempts++;
+                        if (stats.updown) upDowns++;
+                    }
+                });
+                
+                return { fairways, fairwayAttempts, girs, totalPutts, upDowns, upDownAttempts };
             }
 
             recordShot(club, distance, context = {}) {
@@ -1949,173 +2370,141 @@ Current Game State:`;
                         this.storage.data.profile.clubDistances[detectedClub] = distance;
                         this.storage.save();
                         console.log(`✅ Stored: ${detectedClub} = ${distance} yards`);
-                        // Don't return — let AI respond conversationally too
-                    }
-                }
-                
-                // ==========================================
-                // DETECT & STORE: Course and hole setup
-                // ==========================================
-                if (!this.storage.data.currentRound) {
-                    // Try to detect course name
-                    const coursePatterns = [
-                        /(?:playing|at|going to|we're at)\s+(.+?)(?:\s+(?:today|starting|hole)|$)/i,
-                        /(?:course is|course called)\s+(.+?)(?:\s|$)/i
-                    ];
-                    for (const pattern of coursePatterns) {
-                        const match = text.match(pattern);
-                        if (match) {
-                            this.tempCourseName = match[1].trim();
-                            break;
-                        }
-                    }
-                    
-                    // Try to detect hole number
-                    const holeMatch = lower.match(/(?:hole|starting|start)\s+(\d+)/i) || lower.match(/^(\d+)$/);
-                    if (holeMatch && this.tempCourseName) {
-                        const holeNum = parseInt(holeMatch[1]);
-                        if (holeNum >= 1 && holeNum <= 18) {
-                            this.storage.startRound(this.tempCourseName, holeNum);
-                            this.updateDisplay();
-                            this.setupMode = 'playing';
-                            console.log(`✅ Round started: ${this.tempCourseName}, hole ${holeNum}`);
-                        }
                     }
                 }
 
-                // ==========================================
-                // DETECT & TRACK: Game actions (shots, holes)
-                // These update game state THEN AI responds
-                // ==========================================
-                const hole = this.storage.getCurrentHole();
+                // Club setup trigger
+                if (lower.includes('set up') && lower.includes('club')) {
+                    this.setupMode = 'club_setup';
+                    this.clubSetupIndex = 0;
+                    this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
+                    await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
+                    return;
+                }
                 
-                // Verbal distance updates: "I have 150", "150 yards", "150 out"
-                const yardMatch = text.match(/(\d+)\s*(?:yards?|out|left|remaining)?/i);
-                if (yardMatch && !this.detectClub(text)) {
-                    const dist = parseInt(yardMatch[1]);
-                    if (dist >= 10 && dist <= 600) {
-                        // Override GPS distance with verbal distance
-                        this.gps.manualDistance = dist;
-                        this.updateDisplay();
-                        console.log(`✅ Distance updated verbally: ${dist} yards`);
+                // End round — save to history
+                if (lower.includes('end round') || lower.includes('finish round') || lower.includes('done for today')) {
+                    const round = this.storage.data.currentRound;
+                    if (round && round.holes.length > 0) {
+                        this.storage.data.rounds.push({...round});
+                        this.storage.data.stats.totalRounds++;
+                        this.storage.save();
+                        this.ai.generateRoundSummary(round);
+                        this.ai.generateMemoryUpdate(this.ai.conversationHistory.slice(-10));
                     }
                 }
                 
-                if (hole && this.setupMode === 'playing') {
-                    // Club setup trigger
-                    if (lower.includes('set up') && lower.includes('club')) {
-                        this.setupMode = 'club_setup';
-                        this.clubSetupIndex = 0;
-                        this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
-                        await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
+                // ==========================================
+                // FAST VECTOR PUTTING — instant, no API call
+                // "15 feet 2% breaks left to right"
+                // "10 feet 3 percent right to left downhill"
+                // ==========================================
+                const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i);
+                const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
+                const hasBreak = lower.includes('left') || lower.includes('right') || lower.includes('straight');
+                
+                if (feetMatch && (slopeMatch || hasBreak)) {
+                    const feet = parseInt(feetMatch[1]);
+                    const slope = slopeMatch ? parseInt(slopeMatch[1]) : 2; // default 2%
+                    
+                    // Detect break direction
+                    let breakDir = '';
+                    if (lower.includes('left to right') || lower.includes('left-to-right')) {
+                        breakDir = 'left-to-right';
+                    } else if (lower.includes('right to left') || lower.includes('right-to-left')) {
+                        breakDir = 'right-to-left';
+                    } else if (lower.includes('breaks left') || lower.includes('break left')) {
+                        breakDir = 'right-to-left'; // ball breaks left = aim right
+                    } else if (lower.includes('breaks right') || lower.includes('break right')) {
+                        breakDir = 'left-to-right'; // ball breaks right = aim left
+                    } else if (lower.includes('straight')) {
+                        breakDir = 'straight';
+                    }
+                    
+                    // Detect uphill/downhill
+                    let elevation = 'level';
+                    if (lower.includes('uphill') || lower.includes('up hill')) elevation = 'uphill';
+                    if (lower.includes('downhill') || lower.includes('down hill')) elevation = 'downhill';
+                    
+                    // Get stimp from storage or default
+                    const stimp = this.storage.data.profile.stimp || 9;
+                    
+                    if (breakDir === 'straight') {
+                        // Straight putt
+                        let advice = `${feet} feet, straight. `;
+                        if (elevation === 'uphill') advice += `Uphill — hit it firm, 18 inches past.`;
+                        else if (elevation === 'downhill') advice += `Downhill — soft touch, let gravity work.`;
+                        else advice += `Center of the cup. Die it 12 inches past.`;
+                        
+                        await this.voice.speak(advice);
+                    } else if (breakDir) {
+                        // Calculate aim point using Vector Putting
+                        const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation);
+                        await this.voice.speak(`${aimPoint.description}. Die it 12 past.`);
+                    } else {
+                        // Have feet but no break — ask for it quickly
+                        await this.voice.speak(`${feet} feet, ${slope} percent. Which way does it break?`);
+                    }
+                    
+                    // Track the putt in conversation history for Claude
+                    this.ai.conversationHistory.push(
+                        { role: 'user', content: text },
+                        { role: 'assistant', content: `[Gave putting read for ${feet}ft, ${slope}% slope, ${breakDir || 'unknown break'}]` }
+                    );
+                    
+                    return; // Fast response — no API call needed
+                }
+                
+                // Set stimp for the round: "stimp 10" or "greens are 11"
+                const stimpMatch = text.match(/stimp\s*(?:is\s*|at\s*|of\s*)?(\d+(?:\.\d+)?)/i) || 
+                                   text.match(/greens?\s+(?:are\s+|at\s+)?(\d+(?:\.\d+)?)\s*stimp/i);
+                if (stimpMatch) {
+                    const stimp = parseFloat(stimpMatch[1]);
+                    if (stimp >= 6 && stimp <= 14) {
+                        this.storage.data.profile.stimp = stimp;
+                        this.storage.save();
+                        await this.voice.speak(`Got it, stimp ${stimp}. I'll factor that into all your reads.`);
                         return;
-                    }
-                    
-                    // Made putt / holed out
-                    if (lower.includes('made it') || lower.includes('holed') || lower.includes('sunk') || lower.includes('drained') ||
-                        (lower.includes('made') && lower.includes('putt'))) {
-                        const totalShots = hole.shots.length + (hole.state === 'green' ? 1 : 0);
-                        const par = hole.par || 4;
-                        const diff = totalShots - par;
-                        
-                        this.storage.completeHole(totalShots);
-                        this.storage.nextHole();
-                        this.gps.manualDistance = null; // Reset for new hole
-                        this.updateDisplay();
-                        
-                        const nextHole = this.storage.getCurrentHole();
-                        // Let AI celebrate and introduce next hole
-                    }
-                    
-                    // Score for hole directly: "scored 5" / "5 on the hole"
-                    if (lower.includes('scored') || lower.includes('on the hole') || lower.includes('for the hole')) {
-                        const scoreMatch = text.match(/(\d+)/);
-                        if (scoreMatch) {
-                            const score = parseInt(scoreMatch[1]);
-                            if (score >= 1 && score <= 15) {
-                                this.storage.completeHole(score);
-                                this.storage.nextHole();
-                                this.gps.manualDistance = null; // Reset for new hole
-                                this.updateDisplay();
-                            }
-                        }
-                    }
-                    
-                    // Detect club being hit — record the shot
-                    const club = this.detectClub(text);
-                    if (club && !lower.includes('what') && !lower.includes('how far') && !lower.includes('my')) {
-                        this.gps.recordShotStart();
-                        const distance = this.gps.getDistance();
-                        this.storage.recordShot(club, distance, { 
-                            state: hole.state,
-                            windy: hole.conditions?.windy
-                        });
-                        
-                        if (club === 'Putter') {
-                            hole.putts = (hole.putts || 0) + 1;
-                            hole.state = 'green';
-                        } else if (hole.state === 'tee') {
-                            hole.state = 'fairway';
-                        }
-                        
-                        console.log(`✅ Shot recorded: ${club}`);
-                    }
-                    
-                    // Update lie state
-                    if (lower.includes('on the green') || lower.includes('hit the green')) {
-                        hole.state = 'green';
-                    } else if (lower.includes('fairway')) {
-                        hole.state = 'fairway';
-                    }
-                    
-                    // Wind detection
-                    if (lower.includes('wind') || lower.includes('windy')) {
-                        hole.conditions = hole.conditions || {};
-                        hole.conditions.windy = true;
-                    }
-                    
-                    // End round detection
-                    if (lower.includes('end round') || lower.includes('finish round') || lower.includes('done for today') || lower.includes('that\'s it')) {
-                        // Save round and generate summary
-                        const round = this.storage.data.currentRound;
-                        if (round && round.holes.length > 0) {
-                            // Save round to history
-                            this.storage.data.rounds.push({...round});
-                            this.storage.data.stats.totalRounds++;
-                            this.storage.save();
-                            
-                            // Generate AI round summary in background
-                            this.ai.generateRoundSummary(round);
-                            
-                            // Also save conversation memory
-                            this.ai.generateMemoryUpdate(this.ai.conversationHistory.slice(-10));
-                        }
                     }
                 }
 
                 // ==========================================
                 // EVERYTHING GOES TO AI
-                // Claude is the brain — always responds
+                // Claude tracks ALL game data via [DATA] blocks
                 // ==========================================
                 console.log('🤖 Sending to Claude AI:', text);
                 
+                const currentHole = this.storage.getCurrentHole();
+                const courseName = this.storage.data.currentRound?.course;
+                const holeNum = currentHole?.number;
+                
                 const context = {
-                    currentHole: this.storage.getCurrentHole(),
+                    currentHole: currentHole,
                     distance: this.gps.getDistance(),
                     score: this.storage.data.currentRound?.score,
-                    course: this.storage.data.currentRound?.course,
+                    course: courseName,
                     holesPlayed: this.storage.data.currentRound?.holes?.length || 0,
-                    conditions: this.storage.getCurrentHole()?.conditions,
-                    clubHistory: this.storage.data.clubPerformance,
-                    playerClubs: this.storage.data.profile.clubDistances
+                    conditions: currentHole?.conditions,
+                    playerClubs: this.storage.data.profile.clubDistances,
+                    roundStats: this.storage.getRoundStats(),
+                    courseHoleData: courseName && holeNum ? this.storage.getHoleData(courseName, holeNum) : null,
+                    courseNotes: courseName && holeNum ? this.storage.getCourseNotes(courseName, holeNum) : []
                 };
                 
                 try {
-                    const aiResponse = await this.ai.ask(text, context);
-                    await this.voice.speak(aiResponse);
+                    const result = await this.ai.ask(text, context);
+                    
+                    // Process game data from Claude's response
+                    if (result.gameData) {
+                        this.storage.processGameData(result.gameData);
+                        this.updateDisplay();
+                    }
+                    
+                    // Speak only the conversational part
+                    await this.voice.speak(result.spoken);
                 } catch (err) {
                     console.error('AI error:', err);
-                    await this.voice.speak("Having trouble connecting. Check your signal and try again.");
+                    await this.voice.speak("Having trouble connecting. Check your signal.");
                 }
             }
 
@@ -2230,58 +2619,27 @@ Current Game State:`;
                 const diff = totalScore - par;
                 const diffStr = diff === 0 ? 'even par' : diff > 0 ? `${diff} over` : `${Math.abs(diff)} under`;
                 
-                // Calculate GIR
-                let greensHit = 0;
-                let totalPutts = 0;
-                let upAndDownAttempts = 0;
-                let upAndDownMade = 0;
-                
-                round.holes.forEach(hole => {
-                    const holePar = hole.par || 4;
-                    const shotsToGreen = hole.shots ? hole.shots.filter(s => s.club !== 'Putter').length : 0;
-                    const putts = hole.shots ? hole.shots.filter(s => s.club === 'Putter').length : 0;
-                    
-                    totalPutts += putts;
-                    
-                    // GIR = reached green in par minus 2 strokes
-                    if (shotsToGreen <= holePar - 2) {
-                        greensHit++;
-                    } else if (hole.finalScore && hole.finalScore <= holePar) {
-                        // Missed green but still made par or better = up and down
-                        upAndDownAttempts++;
-                        upAndDownMade++;
-                    } else if (shotsToGreen > holePar - 2) {
-                        upAndDownAttempts++;
-                    }
-                });
-                
-                const girPercent = Math.round((greensHit / holesPlayed) * 100);
-                const puttsPerHole = (totalPutts / holesPlayed).toFixed(1);
-                const upDownPercent = upAndDownAttempts > 0 ? Math.round((upAndDownMade / upAndDownAttempts) * 100) : 0;
+                const rs = this.storage.getRoundStats();
                 
                 let statsMsg = `Through ${holesPlayed} holes, you're ${diffStr}, ${totalScore} total. `;
-                statsMsg += `Greens in regulation: ${girPercent}%, ${greensHit} of ${holesPlayed}. `;
-                statsMsg += `Averaging ${puttsPerHole} putts per hole, ${totalPutts} total. `;
-                if (upAndDownAttempts > 0) {
-                    statsMsg += `Up and downs: ${upAndDownMade} of ${upAndDownAttempts}, ${upDownPercent}%. `;
+                
+                if (rs) {
+                    if (rs.fairwayAttempts > 0) {
+                        statsMsg += `Fairways: ${rs.fairways} of ${rs.fairwayAttempts}. `;
+                    }
+                    statsMsg += `Greens in regulation: ${rs.girs} of ${holesPlayed}. `;
+                    statsMsg += `Total putts: ${rs.totalPutts}, averaging ${(rs.totalPutts / holesPlayed).toFixed(1)} per hole. `;
+                    if (rs.upDownAttempts > 0) {
+                        statsMsg += `Up and downs: ${rs.upDowns} of ${rs.upDownAttempts}. `;
+                    }
                 }
                 
-                // Add encouragement via AI
-                if (this.ai.hasValidKey()) {
-                    const context = {
-                        score: totalScore,
-                        holesPlayed,
-                        course: round.course,
-                        girPercent,
-                        puttsPerHole,
-                        upDownPercent
-                    };
-                    const aiComment = await this.ai.ask(
-                        `Quick one-liner coaching comment on my stats so far: ${diffStr}, ${girPercent}% GIR, ${puttsPerHole} putts/hole, ${upDownPercent}% up-and-down. Keep it to one sentence.`,
-                        context
-                    );
-                    statsMsg += aiComment;
-                }
+                // Let AI add a coaching comment
+                const result = await this.ai.ask(
+                    `Give me a quick one-sentence coaching takeaway based on my stats: ${statsMsg}`,
+                    { playerClubs: this.storage.data.profile.clubDistances }
+                );
+                if (result.spoken) statsMsg += result.spoken;
                 
                 await this.voice.speak(statsMsg);
             }
