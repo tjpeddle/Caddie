@@ -747,7 +747,7 @@ Field meanings:
 - club: club they just said they're hitting
 - distance: distance of the shot
 - penalty: number of penalty strokes
-- state: current position (tee/fairway/rough/bunker/green/fringe)
+- state: current position (tee/fairway/rough/bunker/green/fringe). ONLY change this when the player TELLS you where they are. When a new hole starts, state is always "tee". Do NOT set state based on your own assumptions or predictions.
 - hole_complete: true when the hole is finished
 - new_course: course name when starting a round
 - new_hole: hole number when starting or moving to next hole
