@@ -720,7 +720,13 @@ CRITICAL RULES:
 3. Use the player's ACTUAL club distances below for recommendations.
 4. Player tee preferences: Oak Hollow = Mixed (Blue/White), Blair Park = Blue/White (6,009), Jamestown = Gold, River Landing = back tees. Use the yardage shown for each hole.
 5. You do NOT have GPS — ask the player for distances when needed.
-5. ALWAYS end EVERY response with a hidden data block to track the round (explained below).
+6. ALWAYS end EVERY response with a hidden data block to track the round (explained below).
+7. BE A REAL CADDIE — when the player arrives at a new hole or asks about any hole, PROACTIVELY give them:
+   - The yardage and par
+   - Key things to watch out for (water, bunkers, doglegs, trees)
+   - A club recommendation based on their distances (e.g. "Driver down the left side" or "3 wood to the corner")
+   Do NOT ask "what club are you hitting?" — the player will tell you when they're ready. Don't ask unnecessary questions. Brief them, recommend, and let them play.
+8. You have FULL COURSE DATA for all holes below. If the player asks about ANY hole on the course (not just the current one), you KNOW it. Never say you don't have the yardage — you do. Check the course data below.
 
 TRACKING SYSTEM — THIS IS ESSENTIAL:
 After your spoken response, ALWAYS add a data block on a new line starting with [DATA] containing a JSON object. This tracks the round. Include ONLY fields that changed based on what the player just said. Possible fields:
@@ -767,20 +773,36 @@ Current Game State:`;
                 // Inject course knowledge if we have it
                 if (course && context.courseHoleData) {
                     const hd = context.courseHoleData;
-                    if (hd.courseOverview && !currentHole) {
+                    if (hd.courseOverview) {
                         systemPrompt += `\n- Course info: ${hd.courseOverview}`;
                     }
                     if (hd.notes) {
                         const yards = hd.yardage || Math.round((hd.blue + hd.white) / 2);
-                        systemPrompt += `\n- THIS HOLE: Par ${hd.par}, ${yards} yards. Hdcp ${hd.hdcp}. ${hd.notes}`;
+                        systemPrompt += `\n- >>> CURRENT HOLE: Par ${hd.par}, ${yards} yards. Hdcp ${hd.hdcp}. ${hd.notes}`;
                     }
                 }
                 
-                // Inject player's learned course notes for this hole
+                // Send ALL holes for the course so Claude can answer about any hole
+                if (course && context.allCourseHoles) {
+                    const allHoles = context.allCourseHoles;
+                    systemPrompt += `\n\nFULL COURSE HOLE DATA (you know ALL of these):`;
+                    for (const [num, h] of Object.entries(allHoles)) {
+                        const yards = h.yardage || Math.round((h.blue + h.white) / 2);
+                        let line = `\n  #${num}: Par ${h.par}, ${yards} yds. ${h.notes}`;
+                        // Add player notes for this hole
+                        const pNotes = context.allCourseNotes?.[num];
+                        if (pNotes && pNotes.length > 0) {
+                            line += ` [Player notes: ${pNotes.join('. ')}]`;
+                        }
+                        systemPrompt += line;
+                    }
+                }
+                
+                // Inject player's learned course notes for CURRENT hole prominently
                 if (course && currentHole) {
                     const playerNotes = context.courseNotes || [];
                     if (playerNotes.length > 0) {
-                        systemPrompt += `\n- PLAYER'S OWN NOTES (learned from previous rounds): ${playerNotes.join('. ')}`;
+                        systemPrompt += `\n- PLAYER'S OWN NOTES FOR THIS HOLE: ${playerNotes.join('. ')}`;
                     }
                 }
                 
@@ -2488,7 +2510,9 @@ Current Game State:`;
                     playerClubs: this.storage.data.profile.clubDistances,
                     roundStats: this.storage.getRoundStats(),
                     courseHoleData: courseName && holeNum ? this.storage.getHoleData(courseName, holeNum) : null,
-                    courseNotes: courseName && holeNum ? this.storage.getCourseNotes(courseName, holeNum) : []
+                    courseNotes: courseName && holeNum ? this.storage.getCourseNotes(courseName, holeNum) : [],
+                    allCourseHoles: courseName ? this.storage.getCourseData(courseName)?.holes : null,
+                    allCourseNotes: courseName ? this.storage.getAllCourseNotes(courseName) : null
                 };
                 
                 try {
