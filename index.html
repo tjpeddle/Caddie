@@ -308,7 +308,7 @@
                 
                 <!-- Simplified help -->
                 <div style="font-size: 0.7rem; opacity: 0.5; margin-top: 10px; text-align: center;">
-                    Tap mic or Shokz to mute/unmute
+                    Say "Caddie" before any command — ignores all other chatter
                 </div>
             </div>
         </div>
@@ -739,6 +739,7 @@ CRITICAL RULES:
 4. Player tee preferences: Oak Hollow = Mixed (Blue/White), Blair Park = Blue/White (6,009), Jamestown = Gold, River Landing = back tees. Use the yardage shown for each hole.
 5. You do NOT have GPS — ask the player for distances when needed.
 6. ALWAYS end EVERY response with a hidden data block to track the round (explained below).
+7. The player has a GREEN READ camera button in the app. If they want a putting read from a photo, tell them to tap the 📸 Green Read button. You CAN see photos when they use that feature. For voice-only putting reads, ask for distance in feet, slope %, and break direction and you'll calculate using Vector Putting.
 7. BE A REAL CADDIE — when the player arrives at a new hole or asks about any hole, PROACTIVELY give them:
    - The yardage and par
    - Key things to watch out for (water, bunkers, doglegs, trees)
@@ -2262,7 +2263,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                                 });
                                 if (started) {
                                     document.getElementById('voiceOrb').classList.add('listening');
-                                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                                    document.getElementById('voiceStatus').textContent = '🎤 Say "Caddie" to talk to me';
                                 }
                                 this.wasListeningBeforeBackground = false;
                             }, 500);
@@ -2288,7 +2289,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                             });
                             if (started) {
                                 document.getElementById('voiceOrb').classList.add('listening');
-                                document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                                document.getElementById('voiceStatus').textContent = '🎤 Say "Caddie" to talk to me';
                             }
                             this.wasListeningBeforeBackground = false;
                         }, 500);
@@ -2346,7 +2347,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                         this.processCommand(text);
                     });
                     if (started) {
-                        document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                        document.getElementById('voiceStatus').textContent = '🎤 Say "Caddie" to talk to me';
                         document.getElementById('voiceOrb').classList.add('listening');
                         console.log('🎤 Mic unmuted');
                     }
@@ -2416,7 +2417,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 
                 if (started) {
                     document.getElementById('voiceOrb').classList.add('listening');
-                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                    document.getElementById('voiceStatus').textContent = '🎤 Say "Caddie" to talk to me';
                 } else {
                     await this.voice.speak("Tap the microphone to enable voice control.");
                 }
@@ -2498,17 +2499,41 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
 
             async processCommand(text) {
                 // ==========================================
+                // WAKE WORD FILTER — "Caddie"
+                // Only process commands that include "caddie"
+                // Strips the wake word before sending to Claude
+                // ==========================================
+                const lower = text.toLowerCase();
+                
+                if (!lower.includes('caddie') && !lower.includes('caddy') && !lower.includes('cadi')) {
+                    console.log('💤 No wake word, ignoring:', text);
+                    return; // Not talking to us — ignore completely
+                }
+                
+                // Strip the wake word before processing
+                text = text.replace(/\b(hey\s+)?(caddie|caddy|cadi)\b[,.]?\s*/gi, '').trim();
+                
+                // If nothing left after stripping wake word, ignore
+                if (text.length === 0) {
+                    console.log('💤 Just wake word, nothing else');
+                    return;
+                }
+                
+                console.log('🎯 Wake word detected, processing:', text);
+                
+                // ==========================================
                 // GOLF SPEECH AUTOCORRECT
                 // Fix common misheard golf terms
                 // ==========================================
                 text = this.golfAutocorrect(text);
+                document.getElementById('yourMessage').textContent = `You: "${text}"`;
                 
-                const lower = text.toLowerCase();
+                const lowerCmd = text.toLowerCase();
 
                 // ==========================================
                 // VOICE SPEED - local only, instant response
                 // ==========================================
-                if (lower.includes('slow down') || lower.includes('slower') || lower.includes('talk slower')) {
+                if (lowerCmd.includes('slow down') || lowerCmd.includes('slower') || lowerCmd.includes('talk slower')) {
                     const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
                     const newSpeed = Math.max(0.5, currentSpeed - 0.2);
                     this.storage.data.profile.voiceSpeed = newSpeed;
@@ -2516,7 +2541,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     await this.voice.speak(`Slowing down to ${Math.round(newSpeed * 100)}% speed.`);
                     return;
                 }
-                if (lower.includes('speed up') || lower.includes('faster') || lower.includes('talk faster')) {
+                if (lowerCmd.includes('speed up') || lowerCmd.includes('faster') || lowerCmd.includes('talk faster')) {
                     const currentSpeed = this.storage.data.profile.voiceSpeed || 1.0;
                     const newSpeed = Math.min(2.0, currentSpeed + 0.2);
                     this.storage.data.profile.voiceSpeed = newSpeed;
@@ -2524,7 +2549,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     await this.voice.speak(`Speeding up to ${Math.round(newSpeed * 100)}% speed.`);
                     return;
                 }
-                if (lower.includes('normal speed') || lower.includes('regular speed')) {
+                if (lowerCmd.includes('normal speed') || lowerCmd.includes('regular speed')) {
                     this.storage.data.profile.voiceSpeed = 1.0;
                     this.storage.save();
                     await this.voice.speak(`Back to normal speed.`);
@@ -2552,7 +2577,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                             this.setupMode = 'ai_setup';
                         }
                         return;
-                    } else if (lower.includes('skip') || lower.includes('done') || lower.includes('nevermind') || lower.includes('finish')) {
+                    } else if (lowerCmd.includes('skip') || lowerCmd.includes('done') || lowerCmd.includes('nevermind') || lowerCmd.includes('finish')) {
                         await this.voice.speak("Club setup complete!");
                         this.setupMode = 'ai_setup';
                         return;
@@ -2576,7 +2601,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 }
 
                 // Club setup trigger
-                if (lower.includes('set up') && lower.includes('club')) {
+                if (lowerCmd.includes('set up') && lowerCmd.includes('club')) {
                     this.setupMode = 'club_setup';
                     this.clubSetupIndex = 0;
                     this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
@@ -2585,7 +2610,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 }
                 
                 // End round — save to history
-                if (lower.includes('end round') || lower.includes('finish round') || lower.includes('done for today')) {
+                if (lowerCmd.includes('end round') || lowerCmd.includes('finish round') || lowerCmd.includes('done for today')) {
                     const round = this.storage.data.currentRound;
                     if (round && round.holes.length > 0) {
                         this.storage.data.rounds.push({...round});
@@ -2603,7 +2628,7 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 // ==========================================
                 const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i);
                 const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
-                const hasBreak = lower.includes('left') || lower.includes('right') || lower.includes('straight');
+                const hasBreak = lowerCmd.includes('left') || lowerCmd.includes('right') || lowerCmd.includes('straight');
                 
                 if (feetMatch && (slopeMatch || hasBreak)) {
                     const feet = parseInt(feetMatch[1]);
@@ -2611,22 +2636,22 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     
                     // Detect break direction
                     let breakDir = '';
-                    if (lower.includes('left to right') || lower.includes('left-to-right')) {
+                    if (lowerCmd.includes('left to right') || lowerCmd.includes('left-to-right')) {
                         breakDir = 'left-to-right';
-                    } else if (lower.includes('right to left') || lower.includes('right-to-left')) {
+                    } else if (lowerCmd.includes('right to left') || lowerCmd.includes('right-to-left')) {
                         breakDir = 'right-to-left';
-                    } else if (lower.includes('breaks left') || lower.includes('break left')) {
+                    } else if (lowerCmd.includes('breaks left') || lowerCmd.includes('break left')) {
                         breakDir = 'right-to-left'; // ball breaks left = aim right
-                    } else if (lower.includes('breaks right') || lower.includes('break right')) {
+                    } else if (lowerCmd.includes('breaks right') || lowerCmd.includes('break right')) {
                         breakDir = 'left-to-right'; // ball breaks right = aim left
-                    } else if (lower.includes('straight')) {
+                    } else if (lowerCmd.includes('straight')) {
                         breakDir = 'straight';
                     }
                     
                     // Detect uphill/downhill
                     let elevation = 'level';
-                    if (lower.includes('uphill') || lower.includes('up hill')) elevation = 'uphill';
-                    if (lower.includes('downhill') || lower.includes('down hill')) elevation = 'downhill';
+                    if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill')) elevation = 'uphill';
+                    if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill')) elevation = 'downhill';
                     
                     // Get stimp from storage or default
                     const stimp = this.storage.data.profile.stimp || 9;
