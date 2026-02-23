@@ -2416,7 +2416,79 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 // Not needed in continuous mode - already always listening
             }
 
+            // ==========================================
+            // GOLF SPEECH AUTOCORRECT
+            // Fixes common speech recognition mistakes for golf terms
+            // ==========================================
+            golfAutocorrect(text) {
+                const corrections = [
+                    // Club misheards
+                    [/\bforeign\b/gi, '4 iron'],
+                    [/\bfor iron\b/gi, '4 iron'],
+                    [/\bfore iron\b/gi, '4 iron'],
+                    [/\btoo iron\b/gi, '2 iron'],
+                    [/\bto iron\b/gi, '2 iron'],
+                    [/\bwon iron\b/gi, '1 iron'],
+                    [/\bone iron\b/gi, '1 iron'],
+                    [/\bthree iron\b/gi, '3 iron'],
+                    [/\bfive iron\b/gi, '5 iron'],
+                    [/\bsix iron\b/gi, '6 iron'],
+                    [/\bseven iron\b/gi, '7 iron'],
+                    [/\beight iron\b/gi, '8 iron'],
+                    [/\bate iron\b/gi, '8 iron'],
+                    [/\bnine iron\b/gi, '9 iron'],
+                    [/\bfor hybrid\b/gi, '4 hybrid'],
+                    [/\bfore hybrid\b/gi, '4 hybrid'],
+                    [/\bfor wood\b/gi, '4 wood'],
+                    [/\bfore wood\b/gi, '4 wood'],
+                    [/\bthree wood\b/gi, '3 wood'],
+                    [/\bfive wood\b/gi, '5 wood'],
+                    [/\bseven wood\b/gi, '7 wood'],
+                    [/\bnine wood\b/gi, '9 wood'],
+                    // Wedge misheards
+                    [/\bpitching which\b/gi, 'pitching wedge'],
+                    [/\bsand which\b/gi, 'sand wedge'],
+                    [/\bsandwich\b/gi, 'sand wedge'],
+                    [/\blob which\b/gi, 'lob wedge'],
+                    [/\bgap which\b/gi, 'gap wedge'],
+                    // Score misheards
+                    [/\bbirdie\b/gi, 'birdie'],
+                    [/\bbirdy\b/gi, 'birdie'],
+                    [/\bboggie\b/gi, 'bogey'],
+                    [/\bbogie\b/gi, 'bogey'],
+                    [/\bpar three\b/gi, 'par 3'],
+                    [/\bpar four\b/gi, 'par 4'],
+                    [/\bpar five\b/gi, 'par 5'],
+                    // Golf terms
+                    [/\bfairway would\b/gi, 'fairway wood'],
+                    [/\blay up\b/gi, 'layup'],
+                    [/\bstimped\b/gi, 'stimp'],
+                    [/\bgreen and regulation\b/gi, 'green in regulation'],
+                    // Hole numbers
+                    [/\bwhole (\d+)\b/gi, 'hole $1'],
+                    [/\bhold (\d+)\b/gi, 'hole $1'],
+                ];
+                
+                let corrected = text;
+                for (const [pattern, replacement] of corrections) {
+                    corrected = corrected.replace(pattern, replacement);
+                }
+                
+                if (corrected !== text) {
+                    console.log(`🔤 Autocorrect: "${text}" → "${corrected}"`);
+                    document.getElementById('yourMessage').textContent = `You: "${corrected}"`;
+                }
+                
+                return corrected;
+            }
+
             async processCommand(text) {
+                // ==========================================
+                // GOLF SPEECH AUTOCORRECT
+                // Fix common misheard golf terms
+                // ==========================================
+                text = this.golfAutocorrect(text);
+                
                 const lower = text.toLowerCase();
 
                 // ==========================================
