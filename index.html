@@ -2398,9 +2398,9 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 
                 let setupPrompt = '';
                 if (hasCustomClubs) {
-                    setupPrompt = "Hey, welcome back! I've got your clubs dialed in. What course are we playing today?";
+                    setupPrompt = "What's up! What course we playing?";
                 } else {
-                    setupPrompt = "Hey! I'm your caddie. Before we tee off, let's get to know your game. What course are we playing today, and do you want to set up your club distances?";
+                    setupPrompt = "Hey, I'm JP, your caddie. Tell me what course we're playing and I'll get us set up. You can tell me your club distances anytime, just say JP my driver goes 280 or whatever.";
                 }
                 
                 try {
@@ -2559,36 +2559,8 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 }
 
                 // ==========================================
-                // CLUB SETUP MODE - structured input needed
-                // ==========================================
-                if (this.setupMode === 'club_setup') {
-                    const distMatch = text.match(/(\d+)/);
-                    if (distMatch) {
-                        const distance = parseInt(distMatch[1]);
-                        const currentClub = this.clubsToSetup[this.clubSetupIndex];
-                        
-                        this.storage.data.profile.clubDistances[currentClub] = distance;
-                        this.storage.save();
-                        
-                        this.clubSetupIndex++;
-                        
-                        if (this.clubSetupIndex < this.clubsToSetup.length) {
-                            await this.voice.speak(`${currentClub}, ${distance} yards. How far does your ${this.clubsToSetup[this.clubSetupIndex]} go?`);
-                        } else {
-                            await this.voice.speak(`Perfect! All clubs configured. Ready to play!`);
-                            this.setupMode = 'ai_setup';
-                        }
-                        return;
-                    } else if (lowerCmd.includes('skip') || lowerCmd.includes('done') || lowerCmd.includes('nevermind') || lowerCmd.includes('finish')) {
-                        await this.voice.speak("Club setup complete!");
-                        this.setupMode = 'ai_setup';
-                        return;
-                    }
-                }
-
-                // ==========================================
                 // DETECT & STORE: Club distances said naturally
-                // "my driver goes 280" / "7 iron is 155"
+                // "my driver goes 280" / "7 iron is 155" / "hybrid goes 175"
                 // ==========================================
                 const clubDistancePattern = /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes|is|about|around)\s+(\d+)/i;
                 const clubDistMatch = text.match(clubDistancePattern);
@@ -2602,14 +2574,8 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     }
                 }
 
-                // Club setup trigger
-                if (lowerCmd.includes('set up') && lowerCmd.includes('club')) {
-                    this.setupMode = 'club_setup';
-                    this.clubSetupIndex = 0;
-                    this.clubsToSetup = ['Driver', '3 Wood', '5 Wood', 'Hybrid', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'Pitching Wedge', 'Gap Wedge', 'Sand Wedge', 'Lob Wedge'];
-                    await this.voice.speak(`Okay, let's set up your clubs. How far does your ${this.clubsToSetup[0]} go?`);
-                    return;
-                }
+                // Club setup - handled naturally by Claude now
+                // Just say "JP, my driver goes 280" etc.
                 
                 // End round — save to history
                 if (lowerCmd.includes('end round') || lowerCmd.includes('finish round') || lowerCmd.includes('done for today')) {
