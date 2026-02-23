@@ -2505,13 +2505,15 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 // ==========================================
                 const lower = text.toLowerCase();
                 
-                if (!lower.includes('caddie') && !lower.includes('caddy') && !lower.includes('cadi')) {
+                const hasWakeWord = lower.includes('caddie') || lower.includes('caddy') || lower.includes('cadi') || lower.startsWith('carry ') || lower.startsWith('hey carry');
+                
+                if (!hasWakeWord) {
                     console.log('💤 No wake word, ignoring:', text);
                     return; // Not talking to us — ignore completely
                 }
                 
                 // Strip the wake word before processing
-                text = text.replace(/\b(hey\s+)?(caddie|caddy|cadi)\b[,.]?\s*/gi, '').trim();
+                text = text.replace(/\b(hey\s+)?(caddie|caddy|cadi|carry)\b[,.]?\s*/gi, '').trim();
                 
                 // If nothing left after stripping wake word, ignore
                 if (text.length === 0) {
