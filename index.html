@@ -631,11 +631,15 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                 this.messageCount++;
                 
                 try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                    
                     const response = await fetch(this.endpoint, {
                         method: 'POST',
                         headers: {
                             'content-type': 'application/json'
                         },
+                        signal: controller.signal,
                         body: JSON.stringify({
                             model: 'claude-haiku-4-5-20251001',
                             max_tokens: 300,
@@ -643,6 +647,8 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                             messages: this.conversationHistory.slice(-14)
                         })
                     });
+                    
+                    clearTimeout(timeout);
 
                     if (!response.ok) {
                         const errorText = await response.text();
@@ -693,12 +699,20 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                     
                 } catch (error) {
                     console.error('❌ Claude API Error:', error);
+                    console.error('❌ Error message:', error.message);
+                    console.error('❌ Endpoint:', this.endpoint);
                     
                     let errMsg = '';
                     if (error.message.includes('429')) {
                         errMsg = "Rate limit hit. Give me a sec.";
+                    } else if (error.message.includes('413') || error.message.includes('too large')) {
+                        errMsg = "Message too long. Try a shorter request.";
+                    } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                        errMsg = "No internet connection. Check your signal.";
+                    } else if (error.message.includes('timeout') || error.message.includes('AbortError')) {
+                        errMsg = "Request timed out. Try again.";
                     } else {
-                        errMsg = "Having trouble connecting. Check your signal.";
+                        errMsg = `Connection error: ${error.message}`;
                     }
                     
                     return { spoken: errMsg, gameData: null };
