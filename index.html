@@ -302,13 +302,13 @@
                     Tap mic to start
                 </div>
                 <div class="caddie-speaks" id="caddieMessage">
-                    Tap Shokz or mic when you want to talk
+                    Ready to talk golf
                 </div>
                 <div class="you-said" id="yourMessage"></div>
                 
                 <!-- Simplified help -->
                 <div style="font-size: 0.7rem; opacity: 0.5; margin-top: 10px; text-align: center;">
-                    Tap Shokz button or mic to talk — auto-stops when you finish
+                    Tap mic or Shokz to mute/unmute
                 </div>
             </div>
         </div>
@@ -1825,13 +1825,11 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (SpeechRecognition) {
                     this.recognition = new SpeechRecognition();
-                    this.recognition.continuous = true; // Stay open for natural pauses
+                    this.recognition.continuous = true;
                     this.recognition.interimResults = false;
                     this.recognition.lang = 'en-US';
                     this.recognition.maxAlternatives = 1;
                 }
-                this.silenceTimer = null;
-                this.pendingTranscript = '';
             }
 
             async speak(text, customRate = null) {
@@ -1913,55 +1911,28 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 });
             }
 
-            // Push-to-talk with grace period: tap to start, accumulates speech, 
-            // sends after 3 seconds of silence, then mic sleeps
-            startListening(onResult) {
+            startContinuousListening(onResult) {
                 if (!this.recognition) {
                     console.error('Speech recognition not available');
                     return false;
                 }
-                
-                if (this.isListening) {
-                    console.log('⚪ Already listening');
-                    return true;
-                }
-                
-                this._onResult = onResult;
-                this.pendingTranscript = '';
-                
-                const SILENCE_TIMEOUT = 3000; // 3 seconds of silence = done talking
-                
-                const resetSilenceTimer = () => {
-                    if (this.silenceTimer) clearTimeout(this.silenceTimer);
-                    this.silenceTimer = setTimeout(() => {
-                        // 3 seconds of silence — process whatever we accumulated and stop
-                        if (this.pendingTranscript.trim().length > 0) {
-                            console.log('⏱️ Silence timeout — processing:', this.pendingTranscript);
-                            const finalText = this.pendingTranscript.trim();
-                            this.pendingTranscript = '';
-                            this.stopListening();
-                            onResult(finalText);
-                        } else {
-                            console.log('⏱️ Silence timeout — nothing said, stopping');
-                            this.stopListening();
-                        }
-                    }, SILENCE_TIMEOUT);
-                };
 
                 this.recognition.onresult = (event) => {
-                    // Accumulate all new results
-                    for (let i = event.resultIndex; i < event.results.length; i++) {
-                        if (event.results[i].isFinal) {
-                            const chunk = event.results[i][0].transcript.trim();
-                            if (chunk.length > 0) {
-                                this.pendingTranscript += (this.pendingTranscript ? ' ' : '') + chunk;
-                                console.log('🎤 Heard chunk:', chunk, '| Full so far:', this.pendingTranscript);
-                                document.getElementById('yourMessage').textContent = `You: "${this.pendingTranscript}"`;
-                            }
-                        }
+                    const last = event.results.length - 1;
+                    const transcript = event.results[last][0].transcript.trim();
+                    const confidence = event.results[last][0].confidence;
+                    console.log('🎤 Heard:', transcript, '(confidence:', confidence, ')');
+                    document.getElementById('yourMessage').textContent = `You: "${transcript}"`;
+                    
+                    // Don't process if caddie is speaking OR if transcript is empty
+                    if (!this.isSpeaking && transcript.length > 0) {
+                        console.log('✅ Processing command:', transcript);
+                        onResult(transcript);
+                    } else if (this.isSpeaking) {
+                        console.log('⏸️ Caddie is speaking, ignoring input');
+                    } else {
+                        console.log('⚠️ Empty transcript, ignoring');
                     }
-                    // Reset the silence timer — player is still talking
-                    resetSilenceTimer();
                 };
 
                 this.recognition.onerror = (event) => {
@@ -1970,74 +1941,59 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                         document.getElementById('caddieMessage').textContent = 
                             'Microphone permission needed. Check Settings > Safari > Microphone.';
                         document.getElementById('voiceStatus').textContent = '🔇 Mic permission denied';
-                        this.isListening = false;
                     } else if (event.error === 'no-speech') {
-                        console.log('⚪ No speech detected');
-                        // Don't stop — they might just be thinking
+                        console.log('⚪ No speech detected, continuing...');
+                        return;
                     } else if (event.error === 'aborted') {
-                        console.log('⚪ Recognition aborted');
+                        console.log('⚪ Recognition aborted, restarting...');
                     } else {
-                        console.log('⚠️ Other error:', event.error);
+                        console.log('⚠️ Other error:', event.error, '- attempting restart');
                     }
                 };
 
                 this.recognition.onend = () => {
-                    console.log('🔵 Recognition session ended');
-                    // If we're still supposed to be listening (didn't stopListening), restart
-                    if (this.isListening) {
-                        console.log('🔄 Restarting recognition (still in listen mode)');
+                    console.log('🔵 Recognition ended');
+                    if (this.continuousMode) {
+                        console.log('🔄 Auto-restarting recognition...');
                         setTimeout(() => {
-                            if (this.isListening) {
+                            if (this.continuousMode) {
                                 try {
                                     this.recognition.start();
-                                } catch(e) {
-                                    console.log('⚪ Restart issue:', e.message);
+                                    console.log('✅ Recognition restarted');
+                                } catch (e) {
+                                    if (e.message.includes('already started')) {
+                                        console.log('⚪ Already running, no restart needed');
+                                    } else {
+                                        console.error('❌ Restart failed:', e.message);
+                                    }
                                 }
                             }
-                        }, 200);
-                    } else {
-                        document.getElementById('voiceStatus').textContent = '🔇 Tap Shokz or mic to talk';
-                        document.getElementById('voiceOrb').classList.remove('listening');
+                        }, 300);
                     }
                 };
 
                 this.recognition.onstart = () => {
-                    console.log('🟢 Recognition started — listening');
+                    console.log('🟢 Recognition started');
                 };
 
                 try {
                     this.recognition.start();
+                    this.continuousMode = true;
                     this.isListening = true;
-                    document.getElementById('voiceStatus').textContent = '🎤 Listening...';
-                    document.getElementById('voiceOrb').classList.add('listening');
-                    console.log('🎙️ Push-to-talk activated (3s silence timeout)');
-                    
-                    // Start the silence timer immediately — if they don't say anything in 3s, stop
-                    resetSilenceTimer();
-                    
+                    console.log('🎙️ Continuous listening activated');
                     return true;
                 } catch (error) {
-                    if (error.message.includes('already started')) {
-                        console.log('⚪ Already listening');
-                        return true;
-                    }
-                    console.error('❌ Could not start listening:', error);
+                    console.error('❌ Could not start continuous listening:', error);
                     return false;
                 }
             }
 
-            stopListening() {
-                if (this.silenceTimer) {
-                    clearTimeout(this.silenceTimer);
-                    this.silenceTimer = null;
-                }
+            stopContinuousListening() {
+                this.continuousMode = false;
                 this.isListening = false;
-                this.pendingTranscript = '';
                 if (this.recognition) {
-                    try { this.recognition.stop(); } catch(e) {}
+                    this.recognition.stop();
                 }
-                document.getElementById('voiceStatus').textContent = '🔇 Tap Shokz or mic to talk';
-                document.getElementById('voiceOrb').classList.remove('listening');
             }
 
             // Keep the old listen method for backwards compatibility
@@ -2271,31 +2227,58 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 // Only pause if fully hidden for extended time
                 document.addEventListener('visibilitychange', () => {
                     if (document.hidden) {
-                        console.log('App backgrounded');
-                        // In push-to-talk mode, mic is already off between commands
-                        // Just stop any active listen
-                        this.voice.stopListening();
+                        console.log('App backgrounded - keeping mic alive if possible');
+                        this.backgroundTimer = setTimeout(() => {
+                            if (document.hidden && this.voice.continuousMode) {
+                                console.log('Still backgrounded after 30s - pausing mic');
+                                this.voice.stopContinuousListening();
+                                this.wasListeningBeforeBackground = true;
+                            }
+                        }, 30000);
                     } else {
-                        // App is back in foreground
                         clearTimeout(this.backgroundTimer);
                         console.log('App foregrounded');
                         
-                        // Resume silent audio for Bluetooth
                         this.keepAlive.ensureSilentAudio();
                         
-                        // Mic stays off until tapped — push-to-talk mode
+                        if (this.wasListeningBeforeBackground) {
+                            setTimeout(() => {
+                                const started = this.voice.startContinuousListening((text) => {
+                                    this.processCommand(text);
+                                });
+                                if (started) {
+                                    document.getElementById('voiceOrb').classList.add('listening');
+                                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                                }
+                                this.wasListeningBeforeBackground = false;
+                            }, 500);
+                        }
                     }
                 });
 
                 // Also handle when app loses focus (iOS-specific)
                 window.addEventListener('blur', () => {
                     console.log('App lost focus');
-                    this.voice.stopListening();
+                    if (this.voice.continuousMode) {
+                        this.voice.stopContinuousListening();
+                        this.wasListeningBeforeBackground = true;
+                    }
                 });
 
                 window.addEventListener('focus', () => {
                     console.log('App gained focus');
-                    // Mic stays off until tapped — push-to-talk mode
+                    if (this.wasListeningBeforeBackground) {
+                        setTimeout(() => {
+                            const started = this.voice.startContinuousListening((text) => {
+                                this.processCommand(text);
+                            });
+                            if (started) {
+                                document.getElementById('voiceOrb').classList.add('listening');
+                                document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                            }
+                            this.wasListeningBeforeBackground = false;
+                        }, 500);
+                    }
                 });
             }
 
@@ -2308,26 +2291,24 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 document.getElementById('cameraInput').addEventListener('change', (e) => this.processGreenPhoto(e));
                 
                 // 🎧 SHOKZ BUTTON INTEGRATION
-                // Tap Shokz button = activate mic for one command
+                // Tap Shokz button = mute/unmute mic
                 if ('mediaSession' in navigator) {
                     console.log('🎧 Shokz button integration enabled');
                     
                     try {
-                        // Both play and pause activate the mic (it's a toggle button)
                         navigator.mediaSession.setActionHandler('pause', () => {
-                            console.log('🎧 Shokz PAUSE - Activating mic');
-                            this.activateMic();
+                            console.log('🎧 Shokz PAUSE - Muting mic');
+                            this.muteMic();
                         });
                         
                         navigator.mediaSession.setActionHandler('play', () => {
-                            console.log('🎧 Shokz PLAY - Activating mic');
-                            this.activateMic();
+                            console.log('🎧 Shokz PLAY - Unmuting mic');
+                            this.unmuteMic();
                         });
                         
-                        // Set dummy metadata so media session stays active
                         navigator.mediaSession.metadata = new MediaMetadata({
-                            title: 'Golf Caddie',
-                            artist: 'Tap Shokz to talk',
+                            title: 'Golf Caddie - Listening',
+                            artist: 'AI Assistant',
                             album: 'Round in Progress'
                         });
                     } catch (error) {
@@ -2337,27 +2318,32 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
             }
             
             muteMic() {
-                this.voice.stopListening();
-                console.log('🔇 Mic off');
+                if (this.voice.continuousMode) {
+                    this.voice.stopContinuousListening();
+                    document.getElementById('voiceStatus').textContent = '🔇 Muted (Tap Shokz or mic to unmute)';
+                    document.getElementById('voiceOrb').classList.remove('listening');
+                    console.log('🔇 Mic muted');
+                }
             }
             
             unmuteMic() {
-                this.activateMic();
-                console.log('🎤 Mic activated via Shokz');
-            }
-            
-            activateMic() {
-                if (this.voice.isListening) return; // Already listening
-                this.voice.startListening((text) => {
-                    this.processCommand(text);
-                });
+                if (!this.voice.continuousMode) {
+                    const started = this.voice.startContinuousListening((text) => {
+                        this.processCommand(text);
+                    });
+                    if (started) {
+                        document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                        document.getElementById('voiceOrb').classList.add('listening');
+                        console.log('🎤 Mic unmuted');
+                    }
+                }
             }
             
             toggleMic() {
-                if (this.voice.isListening) {
+                if (this.voice.continuousMode) {
                     this.muteMic();
                 } else {
-                    this.activateMic();
+                    this.unmuteMic();
                 }
             }
 
@@ -2409,18 +2395,25 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     document.getElementById('caddieMessage').textContent = setupPrompt;
                 }
                 
-                // Start in push-to-talk mode — mic is OFF until tapped
-                document.getElementById('voiceStatus').textContent = '🔇 Tap Shokz or mic to talk';
-                document.getElementById('voiceOrb').classList.remove('listening');
+                // Start continuous listening mode
+                const started = this.voice.startContinuousListening((text) => {
+                    this.processCommand(text);
+                });
+                
+                if (started) {
+                    document.getElementById('voiceOrb').classList.add('listening');
+                    document.getElementById('voiceStatus').textContent = '🎤 LIVE - Always listening';
+                } else {
+                    await this.voice.speak("Tap the microphone to enable voice control.");
+                }
             }
 
             async handleVoice() {
-                // Tap mic orb = activate mic for one command
-                this.activateMic();
+                this.toggleMic();
             }
 
             async autoListen() {
-                // Not needed in push-to-talk mode
+                // Not needed in continuous mode - already always listening
             }
 
             async processCommand(text) {
@@ -2952,7 +2945,7 @@ Debug Info:
 - Voice speed: ${Math.round(currentSpeed * 100)}%
 - Speech synthesis: ${!!window.speechSynthesis ? 'Yes' : 'No'}
 - Speech recognition: ${!!this.voice.recognition ? 'Yes' : 'No'}
-- Mode: Push-to-talk (tap Shokz or mic)
+- Continuous mode: ${this.voice.continuousMode ? 'Yes' : 'No'}
 - Is listening: ${this.voice.isListening ? 'Yes' : 'No'}
 - Is speaking: ${this.voice.isSpeaking ? 'Yes' : 'No'}
 - Setup mode: ${this.setupMode}
