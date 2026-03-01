@@ -308,7 +308,7 @@
                 
                 <!-- Simplified help -->
                 <div style="font-size: 0.7rem; opacity: 0.5; margin-top: 10px; text-align: center;">
-                    Say "JP" before any command — ignores all other chatter
+                    Say "Hey" before any command — ignores all other chatter
                 </div>
             </div>
         </div>
@@ -2264,7 +2264,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                                 });
                                 if (started) {
                                     document.getElementById('voiceOrb').classList.add('listening');
-                                    document.getElementById('voiceStatus').textContent = '🎤 Say "JP" to talk to me';
+                                    document.getElementById('voiceStatus').textContent = '🎤 Say "Hey" to talk to me';
                                 }
                                 this.wasListeningBeforeBackground = false;
                             }, 500);
@@ -2290,7 +2290,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                             });
                             if (started) {
                                 document.getElementById('voiceOrb').classList.add('listening');
-                                document.getElementById('voiceStatus').textContent = '🎤 Say "JP" to talk to me';
+                                document.getElementById('voiceStatus').textContent = '🎤 Say "Hey" to talk to me';
                             }
                             this.wasListeningBeforeBackground = false;
                         }, 500);
@@ -2350,7 +2350,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                         this.processCommand(text);
                     });
                     if (started) {
-                        document.getElementById('voiceStatus').textContent = '🎤 Say "JP" to talk to me';
+                        document.getElementById('voiceStatus').textContent = '🎤 Say "Hey" to talk to me';
                         document.getElementById('voiceOrb').classList.add('listening');
                         console.log('🎤 Mic unmuted');
                     }
@@ -2420,7 +2420,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 
                 if (started) {
                     document.getElementById('voiceOrb').classList.add('listening');
-                    document.getElementById('voiceStatus').textContent = '🎤 Say "JP" to talk to me';
+                    document.getElementById('voiceStatus').textContent = '🎤 Say "Hey" to talk to me';
                 } else {
                     await this.voice.speak("Tap the microphone to enable voice control.");
                 }
@@ -2508,7 +2508,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 // ==========================================
                 const lower = text.toLowerCase();
                 
-                const hasWakeWord = lower.includes('jp') || lower.includes('j.p.') || lower.includes('j p') || lower.includes('gp') || lower.includes('jayp') || lower.includes('caddie') || lower.includes('caddy');
+                const hasWakeWord = lower.startsWith('hey') || lower.includes('hey ') || lower.includes('jp') || lower.includes('j.p.') || lower.includes('gp') || lower.includes('caddie') || lower.includes('caddy');
                 
                 if (!hasWakeWord) {
                     console.log('💤 No wake word, ignoring:', text);
@@ -2516,7 +2516,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 }
                 
                 // Strip the wake word before processing
-                text = text.replace(/\b(hey\s+)?(jp|j\.p\.|j p|gp|jayp|caddie|caddy|cadi|carry)\b[,.]?\s*/gi, '').trim();
+                text = text.replace(/^hey\b[,.]?\s*/i, '').trim();
                 
                 // If nothing left after stripping wake word, ignore
                 if (text.length === 0) {
@@ -2889,10 +2889,8 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     return;
                 }
                 
-                this.voice.speak("Pick your aerial photos. I'll learn each hole.");
-                setTimeout(() => {
-                    document.getElementById('aerialInput').click();
-                }, 1000);
+                // Must trigger file input immediately from user tap — iOS blocks delayed clicks
+                document.getElementById('aerialInput').click();
             }
             
             async processAerialPhoto(event) {
