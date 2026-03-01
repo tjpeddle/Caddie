@@ -314,14 +314,17 @@
         </div>
         
         <!-- Bottom Actions -->
-        <div class="bottom-actions" style="grid-template-columns: repeat(3, 1fr);">
-            <button class="action-btn" id="statsBtn">📈 My Game</button>
-            <button class="action-btn" id="greenReadBtn">📸 Green Read</button>
+        <div class="bottom-actions" style="grid-template-columns: repeat(4, 1fr);">
+            <button class="action-btn" id="statsBtn">📈 Stats</button>
+            <button class="action-btn" id="greenReadBtn">📸 Green</button>
+            <button class="action-btn" id="aerialBtn">🛰️ Aerial</button>
             <button class="action-btn" id="historyBtn">🏌️ History</button>
         </div>
         
         <!-- Hidden camera input -->
         <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+        <!-- Hidden file input for aerial photos (from gallery, no camera) -->
+        <input type="file" id="aerialInput" accept="image/*" multiple style="display:none;">
         
     </div>
 
@@ -2301,6 +2304,8 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 document.getElementById('statsBtn').addEventListener('click', () => this.speakStats());
                 document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
                 document.getElementById('greenReadBtn').addEventListener('click', () => this.startGreenRead());
+                document.getElementById('aerialBtn').addEventListener('click', () => this.startAerialUpload());
+                document.getElementById('aerialInput').addEventListener('change', (e) => this.processAerialPhoto(e));
                 document.getElementById('cameraInput').addEventListener('change', (e) => this.processGreenPhoto(e));
                 
                 // 🎧 SHOKZ BUTTON INTEGRATION
@@ -2868,6 +2873,142 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 } catch (err) {
                     console.error('Green read error:', err);
                     await this.voice.speak("Couldn't read that photo. Give me your read and I'll calculate it.");
+                }
+                
+                event.target.value = '';
+            }
+            
+            // ==========================================
+            // AERIAL PHOTO UPLOAD — learn holes from Google Earth
+            // ==========================================
+            startAerialUpload() {
+                // Check if we have a course set
+                const courseName = this.storage.data.currentRound?.course;
+                if (!courseName) {
+                    this.voice.speak("Start a round first so I know what course to save these to. Say JP and the course name.");
+                    return;
+                }
+                
+                this.voice.speak("Pick your aerial photos. I'll learn each hole.");
+                setTimeout(() => {
+                    document.getElementById('aerialInput').click();
+                }, 1000);
+            }
+            
+            async processAerialPhoto(event) {
+                const files = Array.from(event.target.files);
+                if (!files.length) return;
+                
+                const courseName = this.storage.data.currentRound?.course;
+                if (!courseName) {
+                    await this.voice.speak("No course set. Start a round first.");
+                    event.target.value = '';
+                    return;
+                }
+                
+                await this.voice.speak(`Got ${files.length} photo${files.length > 1 ? 's' : ''}. Analyzing...`);
+                
+                let processed = 0;
+                
+                for (const file of files) {
+                    try {
+                        document.getElementById('caddieMessage').textContent = `🛰️ Analyzing photo ${processed + 1} of ${files.length}...`;
+                        
+                        const base64 = await this.resizeAndConvert(file, 800);
+                        
+                        const prompt = `You are an expert golf caddie analyzing an aerial/satellite photo of a golf hole at ${courseName}.
+
+Look at this image and identify:
+1. What hole number this appears to be (if you can tell from layout, numbering, or tee/green position)
+2. The full hole layout: doglegs, fairway shape, landing zones
+3. All hazards: bunkers, water, trees, OB
+4. Green shape, size, and any visible contours/tiers
+5. Best strategy: where to aim off the tee, where to miss, danger zones
+
+Respond with a brief 2-3 sentence summary of the key strategy, then a [DATA] block.
+
+If you can identify the hole number, include new_hole. ALWAYS include a course_note with detailed layout info.
+
+Example:
+Slight dogleg left, water runs down the entire left side. Best play is center-right off the tee. Green is kidney-shaped with bunkers front-left and right.
+[DATA]{"new_hole":7,"course_note":"Dogleg left with water all down left side. Landing zone center-right 240-260 off tee. Green kidney-shaped, bunkers front-left and right. Bailout right of green is safe. Approach from right side of fairway is best angle.","state":"tee"}`;
+
+                        const response = await fetch(this.ai.endpoint, {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({
+                                model: 'claude-haiku-4-5-20251001',
+                                max_tokens: 400,
+                                messages: [{
+                                    role: 'user',
+                                    content: [
+                                        {
+                                            type: 'image',
+                                            source: {
+                                                type: 'base64',
+                                                media_type: 'image/jpeg',
+                                                data: base64
+                                            }
+                                        },
+                                        { type: 'text', text: prompt }
+                                    ]
+                                }]
+                            })
+                        });
+                        
+                        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                        
+                        const data = await response.json();
+                        let fullResponse = '';
+                        for (const block of data.content) {
+                            if (block.type === 'text') fullResponse += block.text;
+                        }
+                        
+                        // Extract DATA block
+                        const dataMatch = fullResponse.match(/\[DATA\]({.*})/);
+                        if (dataMatch) {
+                            try {
+                                const gameData = JSON.parse(dataMatch[1]);
+                                
+                                // If hole was identified, save note to that hole
+                                if (gameData.course_note) {
+                                    const holeNum = gameData.new_hole || (processed + 1);
+                                    this.storage.saveCourseNote(courseName, holeNum, gameData.course_note);
+                                    console.log(`🛰️ Saved aerial note for hole ${holeNum}: ${gameData.course_note}`);
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse aerial DATA:', e);
+                            }
+                        }
+                        
+                        // Speak the spoken part
+                        const spoken = fullResponse.replace(/\[DATA\].*$/, '').trim();
+                        if (spoken) {
+                            // For multiple photos, keep it brief
+                            if (files.length > 1) {
+                                const holeMatch = fullResponse.match(/"new_hole"\s*:\s*(\d+)/);
+                                const holeId = holeMatch ? `Hole ${holeMatch[1]}` : `Photo ${processed + 1}`;
+                                document.getElementById('caddieMessage').textContent = `🛰️ ${holeId}: ${spoken}`;
+                            } else {
+                                await this.voice.speak(spoken);
+                            }
+                        }
+                        
+                        processed++;
+                        
+                    } catch (err) {
+                        console.error(`Aerial photo ${processed + 1} error:`, err);
+                        processed++;
+                    }
+                    
+                    // Small delay between photos to avoid rate limiting
+                    if (files.length > 1) {
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
+                }
+                
+                if (files.length > 1) {
+                    await this.voice.speak(`Done. Learned ${processed} holes for ${courseName}. That knowledge is saved forever.`);
                 }
                 
                 event.target.value = '';
