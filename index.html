@@ -882,27 +882,25 @@ Current Game State:`;
                 const courseName = context.course || 'unknown course';
                 const playerNotes = context.courseNotes || [];
                 
-                let prompt = `You are an expert caddie analyzing a photo of a putting green. Hole ${holeNum} at ${courseName}. Stimp is ${stimp}.
+                let prompt = `You are an expert caddie looking at a photo of a putting green. Hole ${holeNum} at ${courseName}.
 
-Look at this photo carefully and determine:
-1. Estimated distance from ball to pin in FEET
-2. Estimated slope percentage (1-5%)
-3. Break direction: "left-to-right" or "right-to-left" or "straight"
-4. Elevation: "uphill" or "downhill" or "level"
-5. Any tiers or ridges between ball and hole
-6. A description of the green shape and slopes you can see
+Your job is to DESCRIBE THE GREEN — not read the putt. The player will tell you the break and distance themselves.
 
-IMPORTANT: After your brief spoken description (1-2 sentences about what you see), you MUST include a [DATA] block with these fields:
-- putt_feet: estimated distance in feet (number)
-- putt_slope: estimated slope percentage (number)  
-- putt_break: "left-to-right" or "right-to-left" or "straight"
-- putt_elevation: "uphill" or "downhill" or "level"
-- course_note: description of the green shape/slopes for future reference
+Look at this photo and describe:
+1. The overall shape and contour of the green
+2. Any tiers, ridges, shelves, or false edges you can see
+3. Where the green slopes (front to back, left to right, etc.)
+4. Any features that would affect putting from different positions
+
+Keep your spoken response to 1-2 sentences — the most important things about this green.
+
+ALWAYS end with a [DATA] block:
+- course_note: detailed description of the green shape/slopes/tiers for future reference
 - state: "green"
 
 Example response:
-Looks like about 18 feet, slightly uphill with a right-to-left break. There's a subtle ridge about halfway.
-[DATA]{"putt_feet":18,"putt_slope":2,"putt_break":"right-to-left","putt_elevation":"uphill","course_note":"Subtle ridge through middle of green. Back half slopes right to left. Front is relatively flat.","state":"green"}`;
+Two-tiered green with a ridge running through the middle. Back shelf slopes hard left, front is more flat.
+[DATA]{"course_note":"Two-tiered green, ridge through middle. Back shelf slopes hard left to right. Front relatively flat. Bail out area right of green.","state":"green"}`;
 
                 if (playerNotes.length > 0) {
                     prompt += `\n\nPlayer's notes about this green from previous rounds: ${playerNotes.join('. ')}`;
@@ -2560,17 +2558,41 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
 
                 // ==========================================
                 // DETECT & STORE: Club distances said naturally
-                // "my driver goes 280" / "7 iron is 155" / "hybrid goes 175"
+                // Catches many patterns: "my driver goes 280", "7 iron 155", 
+                // "hybrid is about 175", "driver 260", "my 9 iron goes 130"
                 // ==========================================
-                const clubDistancePattern = /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes|is|about|around)\s+(\d+)/i;
-                const clubDistMatch = text.match(clubDistancePattern);
-                if (clubDistMatch) {
-                    const detectedClub = this.detectClub(clubDistMatch[1]);
-                    const distance = parseInt(clubDistMatch[2]);
-                    if (detectedClub && distance >= 40 && distance <= 400) {
-                        this.storage.data.profile.clubDistances[detectedClub] = distance;
-                        this.storage.save();
-                        console.log(`✅ Stored: ${detectedClub} = ${distance} yards`);
+                const clubPatterns = [
+                    // "my driver goes 280" / "driver is 260" / "driver about 250"
+                    /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:goes|is|about|around|hits|carry|carries)\s+(?:about\s+)?(\d+)/i,
+                    // "driver 260" / "7 iron 155" / "hybrid 175"
+                    /(?:my\s+)?(\w+(?:\s+\w+)?)\s+(\d{2,3})\s*(?:yards?)?$/i,
+                    // "I hit my driver 260" / "I hit 7 iron 155"
+                    /(?:I\s+hit\s+(?:my\s+)?)(\w+(?:\s+\w+)?)\s+(?:about\s+)?(\d+)/i,
+                    // "260 with my driver" / "155 with 7 iron"  
+                    /(\d+)\s+(?:yards?\s+)?(?:with\s+(?:my\s+)?)(\w+(?:\s+\w+)?)/i,
+                ];
+                
+                for (const pattern of clubPatterns) {
+                    const clubDistMatch = text.match(pattern);
+                    if (clubDistMatch) {
+                        let clubText, distance;
+                        // Handle reversed pattern (distance first)
+                        if (/^\d+$/.test(clubDistMatch[1])) {
+                            distance = parseInt(clubDistMatch[1]);
+                            clubText = clubDistMatch[2];
+                        } else {
+                            clubText = clubDistMatch[1];
+                            distance = parseInt(clubDistMatch[2]);
+                        }
+                        const detectedClub = this.detectClub(clubText);
+                        if (detectedClub && distance >= 40 && distance <= 400) {
+                            this.storage.data.profile.clubDistances[detectedClub] = distance;
+                            this.storage.save();
+                            console.log(`✅ Stored: ${detectedClub} = ${distance} yards`);
+                            // Confirm it saved so the player knows
+                            await this.voice.speak(`Got it. ${detectedClub}, ${distance} yards.`);
+                            return;
+                        }
                     }
                 }
 
@@ -2814,21 +2836,18 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                 const file = event.target.files[0];
                 if (!file) return;
                 
-                // Show processing state
                 document.getElementById('caddieMessage').textContent = '📸 Reading the green...';
                 document.getElementById('voiceStatus').textContent = 'Analyzing photo';
                 
                 try {
-                    // Resize image to save bandwidth (max 800px)
                     const base64 = await this.resizeAndConvert(file, 800);
                     
                     const currentHole = this.storage.getCurrentHole();
                     const courseName = this.storage.data.currentRound?.course;
                     const holeNum = currentHole?.number;
-                    const stimp = this.storage.data.profile.stimp || 9;
                     
                     const context = {
-                        stimp: stimp,
+                        stimp: this.storage.data.profile.stimp || 9,
                         currentHole: currentHole,
                         course: courseName,
                         courseNotes: courseName && holeNum ? this.storage.getCourseNotes(courseName, holeNum) : []
@@ -2836,51 +2855,21 @@ Looks like about 18 feet, slightly uphill with a right-to-left break. There's a 
                     
                     const result = await this.ai.greenRead(base64, context);
                     
-                    // Process any game data (course notes about green shape)
+                    // Save course notes about the green
                     if (result.gameData) {
                         this.storage.processGameData(result.gameData);
-                        
-                        // If Claude returned putting data, run Vector Putting calculator
-                        const gd = result.gameData;
-                        if (gd.putt_feet && gd.putt_break && gd.putt_break !== 'straight') {
-                            const slope = gd.putt_slope || 2;
-                            const elevation = gd.putt_elevation || 'level';
-                            
-                            const aimPoint = this.vectorPutting.getAimPoint(
-                                gd.putt_feet, slope, stimp, gd.putt_break, elevation
-                            );
-                            
-                            // Combine Claude's read with Vector Putting math
-                            let fullRead = result.spoken;
-                            fullRead += ` Vector read: ${aimPoint.description}.`;
-                            if (elevation === 'uphill') fullRead += ' Hit it firm, 18 inches past.';
-                            else if (elevation === 'downhill') fullRead += ' Soft touch, let gravity do the work.';
-                            else fullRead += ' Die it 12 inches past.';
-                            
-                            await this.voice.speak(fullRead);
-                            console.log(`🎯 Vector Putting: ${gd.putt_feet}ft, ${slope}%, ${gd.putt_break}, ${elevation} → ${aimPoint.description}`);
-                        } else if (gd.putt_feet && gd.putt_break === 'straight') {
-                            let fullRead = result.spoken;
-                            fullRead += ` Straight putt, center of the cup.`;
-                            if (gd.putt_elevation === 'uphill') fullRead += ' Firm, 18 inches past.';
-                            else if (gd.putt_elevation === 'downhill') fullRead += ' Easy does it.';
-                            else fullRead += ' Die it 12 past.';
-                            
-                            await this.voice.speak(fullRead);
-                        } else {
-                            // No putting data extracted, just speak Claude's read
-                            await this.voice.speak(result.spoken);
-                        }
-                    } else {
-                        await this.voice.speak(result.spoken);
                     }
+                    
+                    // Speak the green description
+                    let msg = result.spoken || 'Got the green mapped.';
+                    msg += ' Give me your read when you\'re ready.';
+                    await this.voice.speak(msg);
                     
                 } catch (err) {
                     console.error('Green read error:', err);
-                    await this.voice.speak("Couldn't read that photo. Try again or just give me the distance and break.");
+                    await this.voice.speak("Couldn't read that photo. Give me your read and I'll calculate it.");
                 }
                 
-                // Reset file input so same photo can be retaken
                 event.target.value = '';
             }
             
