@@ -2562,6 +2562,21 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 }
 
                 // ==========================================
+                // AERIAL MODE — waiting for hole number
+                // ==========================================
+                if (this.aerialMode) {
+                    const holeMatch = text.match(/(\d+)/);
+                    if (holeMatch) {
+                        this.aerialMode = false;
+                        await this.processAerialWithHole(parseInt(holeMatch[1]));
+                        return;
+                    } else {
+                        await this.voice.speak("What hole number? Just say the number.");
+                        return;
+                    }
+                }
+
+                // ==========================================
                 // DETECT & STORE: Club distances said naturally
                 // Catches many patterns: "my driver goes 280", "7 iron 155", 
                 // "hybrid is about 175", "driver 260", "my 9 iron goes 130"
@@ -2882,14 +2897,15 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
             // AERIAL PHOTO UPLOAD — learn holes from Google Earth
             // ==========================================
             startAerialUpload() {
-                // Check if we have a course set
                 const courseName = this.storage.data.currentRound?.course;
                 if (!courseName) {
-                    this.voice.speak("Start a round first so I know what course to save these to. Say JP and the course name.");
+                    this.voice.speak("Start a round first so I know what course to save these to. Say hey and the course name.");
                     return;
                 }
                 
-                // Must trigger file input immediately from user tap — iOS blocks delayed clicks
+                // Open file picker immediately (iOS requires this from user tap)
+                // We'll ask what hole after they pick the photo
+                this.aerialNeedsHole = true;
                 document.getElementById('aerialInput').click();
             }
             
@@ -2904,32 +2920,49 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     return;
                 }
                 
-                await this.voice.speak(`Got ${files.length} photo${files.length > 1 ? 's' : ''}. Analyzing...`);
+                // Store the files and ask for hole number
+                this.pendingAerialFiles = files;
+                this.aerialNeedsHole = true;
+                this.aerialMode = true;
+                await this.voice.speak(`Got ${files.length} photo${files.length > 1 ? 's' : ''}. What hole number?`);
                 
-                let processed = 0;
+                event.target.value = '';
+            }
+            
+            async processAerialWithHole(holeNum) {
+                const files = this.pendingAerialFiles;
+                if (!files || !files.length) return;
                 
-                for (const file of files) {
+                const courseName = this.storage.data.currentRound?.course;
+                this.pendingAerialFiles = null;
+                
+                await this.voice.speak(`Analyzing hole ${holeNum}...`);
+                
+                for (let i = 0; i < files.length; i++) {
                     try {
-                        document.getElementById('caddieMessage').textContent = `🛰️ Analyzing photo ${processed + 1} of ${files.length}...`;
+                        document.getElementById('caddieMessage').textContent = `🛰️ Analyzing photo ${i + 1} of ${files.length} for hole ${holeNum}...`;
                         
-                        const base64 = await this.resizeAndConvert(file, 800);
+                        const base64 = await this.resizeAndConvert(files[i], 800);
                         
-                        const prompt = `You are an expert golf caddie analyzing an aerial/satellite photo of a golf hole at ${courseName}.
+                        const prompt = `You are looking at an aerial/satellite photo of HOLE ${holeNum} at ${courseName}.
 
-Look at this image and identify:
-1. What hole number this appears to be (if you can tell from layout, numbering, or tee/green position)
-2. The full hole layout: doglegs, fairway shape, landing zones
-3. All hazards: bunkers, water, trees, OB
-4. Green shape, size, and any visible contours/tiers
-5. Best strategy: where to aim off the tee, where to miss, danger zones
+IMPORTANT RULES:
+- ONLY describe what you can ACTUALLY see in this photo
+- Do NOT invent or guess at features you cannot see (no making up bunkers, water, or hazards)
+- If you cannot clearly see something, say so
+- Be honest about what is visible vs what is unclear
 
-Respond with a brief 2-3 sentence summary of the key strategy, then a [DATA] block.
+Describe what you can see:
+1. Hole shape: straight, dogleg left/right, how much curve
+2. Fairway: width, any pinch points, landing zone areas
+3. Hazards you can ACTUALLY SEE: bunkers (tan/white patches), water (dark blue/black), trees (where they encroach)
+4. Green: shape, size, any bunkers immediately around it that are VISIBLE
+5. Any other features you can clearly identify
 
-If you can identify the hole number, include new_hole. ALWAYS include a course_note with detailed layout info.
+Keep response to 2-3 sentences of the most useful info.
 
-Example:
-Slight dogleg left, water runs down the entire left side. Best play is center-right off the tee. Green is kidney-shaped with bunkers front-left and right.
-[DATA]{"new_hole":7,"course_note":"Dogleg left with water all down left side. Landing zone center-right 240-260 off tee. Green kidney-shaped, bunkers front-left and right. Bailout right of green is safe. Approach from right side of fairway is best angle.","state":"tee"}`;
+End with [DATA] block:
+[DATA]{"course_note":"YOUR DESCRIPTION OF WHAT YOU ACTUALLY SEE","state":"tee"}`;
 
                         const response = await fetch(this.ai.endpoint, {
                             method: 'POST',
@@ -2962,15 +2995,12 @@ Slight dogleg left, water runs down the entire left side. Best play is center-ri
                             if (block.type === 'text') fullResponse += block.text;
                         }
                         
-                        // Extract DATA block
+                        // Extract DATA block and save to the known hole number
                         const dataMatch = fullResponse.match(/\[DATA\]({.*})/);
                         if (dataMatch) {
                             try {
                                 const gameData = JSON.parse(dataMatch[1]);
-                                
-                                // If hole was identified, save note to that hole
                                 if (gameData.course_note) {
-                                    const holeNum = gameData.new_hole || (processed + 1);
                                     this.storage.saveCourseNote(courseName, holeNum, gameData.course_note);
                                     console.log(`🛰️ Saved aerial note for hole ${holeNum}: ${gameData.course_note}`);
                                 }
@@ -2979,37 +3009,30 @@ Slight dogleg left, water runs down the entire left side. Best play is center-ri
                             }
                         }
                         
-                        // Speak the spoken part
+                        // Speak the description
                         const spoken = fullResponse.replace(/\[DATA\].*$/, '').trim();
                         if (spoken) {
-                            // For multiple photos, keep it brief
                             if (files.length > 1) {
-                                const holeMatch = fullResponse.match(/"new_hole"\s*:\s*(\d+)/);
-                                const holeId = holeMatch ? `Hole ${holeMatch[1]}` : `Photo ${processed + 1}`;
-                                document.getElementById('caddieMessage').textContent = `🛰️ ${holeId}: ${spoken}`;
+                                document.getElementById('caddieMessage').textContent = `🛰️ Hole ${holeNum}: ${spoken}`;
                             } else {
                                 await this.voice.speak(spoken);
                             }
                         }
                         
-                        processed++;
-                        
                     } catch (err) {
-                        console.error(`Aerial photo ${processed + 1} error:`, err);
-                        processed++;
+                        console.error(`Aerial photo error:`, err);
                     }
                     
-                    // Small delay between photos to avoid rate limiting
                     if (files.length > 1) {
                         await new Promise(r => setTimeout(r, 1500));
                     }
                 }
                 
                 if (files.length > 1) {
-                    await this.voice.speak(`Done. Learned ${processed} holes for ${courseName}. That knowledge is saved forever.`);
+                    await this.voice.speak(`Done. Learned hole ${holeNum} for ${courseName}. That knowledge is saved.`);
+                } else {
+                    await this.voice.speak(`Hole ${holeNum} saved. Tap aerial again for the next hole.`);
                 }
-                
-                event.target.value = '';
             }
             
             resizeAndConvert(file, maxSize) {
