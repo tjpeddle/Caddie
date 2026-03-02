@@ -317,7 +317,7 @@
         <div class="bottom-actions" style="grid-template-columns: repeat(4, 1fr);">
             <button class="action-btn" id="statsBtn">📈 Stats</button>
             <button class="action-btn" id="greenReadBtn">📸 Green</button>
-            <button class="action-btn" id="aerialBtn">🛰️ Aerial</button>
+            <button class="action-btn" id="aerialBtn">📝 Scout</button>
             <button class="action-btn" id="historyBtn">🏌️ History</button>
         </div>
         
@@ -733,22 +733,25 @@ Only include categories that have new info. Keep notes brief (under 15 words eac
                     conditions
                 } = context;
                 
-                let systemPrompt = `You are an expert AI golf caddie walking the course with your player. You talk naturally like a real caddie — casual, confident, supportive.
+                let systemPrompt = `You are an expert AI golf caddie walking the course with your player. You talk naturally like a real caddie - casual, confident, supportive.
 
 CRITICAL RULES:
 1. Keep responses SHORT (1-3 sentences). You're talking through headphones on the course.
-2. You know Vector Putting, course management, club selection, mental game.
-3. Use the player's ACTUAL club distances below for recommendations.
-4. Player tee preferences: Oak Hollow = Mixed (Blue/White), Blair Park = Blue/White (6,009), Jamestown = Gold, River Landing = back tees. Use the yardage shown for each hole.
-5. You do NOT have GPS — ask the player for distances when needed.
-6. ALWAYS end EVERY response with a hidden data block to track the round (explained below).
-7. The player has a GREEN READ camera button in the app. If they want a putting read from a photo, tell them to tap the 📸 Green Read button. You CAN see photos when they use that feature. For voice-only putting reads, ask for distance in feet, slope %, and break direction and you'll calculate using Vector Putting.
-7. BE A REAL CADDIE — when the player arrives at a new hole or asks about any hole, PROACTIVELY give them:
+2. Use the player's ACTUAL club distances below for ALL recommendations. NEVER recommend a club without checking their distance chart.
+3. Player tee preferences: Oak Hollow = Mixed (Blue/White), Blair Park = Blue/White (6,009), Jamestown = Gold, River Landing = back tees.
+4. You do NOT have GPS - the player tells you distances.
+5. ALWAYS end EVERY response with a [DATA] block (explained below).
+6. ONLY SAY THINGS YOU ACTUALLY KNOW. Your knowledge comes from:
+   - The course data below (par, yardage, and listed notes per hole)
+   - The PLAYER'S OWN NOTES below (things the player taught you)
+   - What the player tells you during this round
+   Do NOT invent, guess, or make up details about hazards, water, bunkers, slopes, trees, or any course features unless they are SPECIFICALLY listed in the data or player notes below. If you don't have info about a hole's features, just give yardage and par. NEVER say "watch out for the water" or "bunker on the left" unless that exact info is in the data below.
+7. BE A REAL CADDIE - when the player arrives at a new hole, give them:
    - The yardage and par
-   - Key things to watch out for (water, bunkers, doglegs, trees)
-   - A club recommendation based on their distances (e.g. "Driver down the left side" or "3 wood to the corner")
-   Do NOT ask "what club are you hitting?" — the player will tell you when they're ready. Don't ask unnecessary questions. Don't ask about their lie — they'll tell you if it matters (e.g. "I'm in the rough" or "plugged in the bunker"). Don't ask how a shot felt, what the pin position is, or uphill/downhill. The ONLY thing you should ask is distance to the pin if you need it for a club recommendation — and only if the player hasn't already told you. Otherwise, brief them, recommend, and let them play.
-8. You have FULL COURSE DATA for all holes below. If the player asks about ANY hole on the course (not just the current one), you KNOW it. Never say you don't have the yardage — you do. Check the course data below.
+   - ONLY features listed in course data or player notes (NOTHING made up)
+   - A club recommendation matched to their distances
+   Do NOT ask what club they're hitting, about their lie, how a shot felt, pin position, or uphill/downhill. ONLY ask distance to pin if needed. Brief them and let them play.
+8. The player can teach you about the course by describing holes. Save it with course_note. Over time you'll know every detail. Until taught, stick to what's in the data.
 
 TRACKING SYSTEM — THIS IS ESSENTIAL:
 After your spoken response, ALWAYS add a data block on a new line starting with [DATA] containing a JSON object. This tracks the round. Include ONLY fields that changed based on what the player just said. Possible fields:
@@ -839,9 +842,18 @@ Current Game State:`;
                 }
                 if (distance) systemPrompt += `\n- Last known distance: ${distance} yards`;
                 if (score !== undefined && holesPlayed) {
-                    const par = holesPlayed * 4;
-                    const diff = score - par;
-                    systemPrompt += `\n- Total score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed} holes)`;
+                    // Calculate actual par from holes played (not just holes * 4)
+                    let actualPar = 0;
+                    const round = this.storage?.data?.currentRound;
+                    if (round && round.holes) {
+                        for (const hole of round.holes) {
+                            actualPar += hole.par || 4;
+                        }
+                    } else {
+                        actualPar = holesPlayed * 4; // fallback
+                    }
+                    const diff = score - actualPar;
+                    systemPrompt += `\n- Total score: ${score} (${diff >= 0 ? '+' + diff : diff} through ${holesPlayed} holes, par ${actualPar})`;
                 }
                 if (conditions?.windy) systemPrompt += `\n- Wind present`;
                 
@@ -855,13 +867,14 @@ Current Game State:`;
                     if (rs.upDowns !== undefined) systemPrompt += `\n- Up & Downs: ${rs.upDowns}/${rs.upDownAttempts}`;
                 }
                 
-                // ALWAYS include full club bag
+                // ALWAYS include full club bag — make it prominent
                 if (context.playerClubs) {
                     const clubs = context.playerClubs;
-                    systemPrompt += `\n\nPlayer's Club Distances:`;
+                    systemPrompt += `\n\n>>> PLAYER'S ACTUAL CLUB DISTANCES (USE THESE FOR ALL RECOMMENDATIONS):`;
                     for (const [club, dist] of Object.entries(clubs)) {
                         systemPrompt += `\n  ${club}: ${dist} yards`;
                     }
+                    systemPrompt += `\nWhen recommending a club, ALWAYS match the distance to the closest club above. For example if player says 125 yards and their PW is 120 and 9 Iron is 130, recommend 9 Iron or easy PW. NEVER recommend a club that doesn't match the distance.`;
                 }
                 
                 if (!course && !currentHole) {
@@ -2502,29 +2515,33 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
 
             async processCommand(text) {
                 // ==========================================
-                // WAKE WORD FILTER — "Caddie"
-                // Only process commands that include "caddie"
-                // Strips the wake word before sending to Claude
+                // WAKE WORD FILTER — "Hey"
+                // Only process commands that include "hey"
+                // EXCEPTION: aerial mode and other input modes bypass this
                 // ==========================================
                 const lower = text.toLowerCase();
                 
-                const hasWakeWord = lower.startsWith('hey') || lower.includes('hey ') || lower.includes('jp') || lower.includes('j.p.') || lower.includes('gp') || lower.includes('caddie') || lower.includes('caddy');
+                // Bypass wake word when waiting for specific input
+                const inInputMode = this.scoutMode;
                 
-                if (!hasWakeWord) {
-                    console.log('💤 No wake word, ignoring:', text);
-                    return; // Not talking to us — ignore completely
+                if (!inInputMode) {
+                    const hasWakeWord = lower.startsWith('hey') || lower.includes('hey ') || lower.includes('jp') || lower.includes('j.p.') || lower.includes('gp') || lower.includes('caddie') || lower.includes('caddy');
+                    
+                    if (!hasWakeWord) {
+                        console.log('💤 No wake word, ignoring:', text);
+                        return;
+                    }
+                    
+                    // Strip the wake word before processing
+                    text = text.replace(/^hey\b[,.]?\s*/i, '').trim();
+                    
+                    if (text.length === 0) {
+                        console.log('💤 Just wake word, nothing else');
+                        return;
+                    }
                 }
                 
-                // Strip the wake word before processing
-                text = text.replace(/^hey\b[,.]?\s*/i, '').trim();
-                
-                // If nothing left after stripping wake word, ignore
-                if (text.length === 0) {
-                    console.log('💤 Just wake word, nothing else');
-                    return;
-                }
-                
-                console.log('🎯 Wake word detected, processing:', text);
+                console.log('🎯 Processing:', text);
                 
                 // ==========================================
                 // GOLF SPEECH AUTOCORRECT
@@ -2562,18 +2579,61 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 }
 
                 // ==========================================
-                // AERIAL MODE — waiting for hole number
+                // SCOUT MODE — save course notes to a specific hole
+                // "hole 3, green slopes left to right, bunker front right"
                 // ==========================================
-                if (this.aerialMode) {
-                    const holeMatch = text.match(/(\d+)/);
-                    if (holeMatch) {
-                        this.aerialMode = false;
-                        await this.processAerialWithHole(parseInt(holeMatch[1]));
-                        return;
+                if (this.scoutMode) {
+                    // Try to extract hole number
+                    const spokenNumbers = {
+                        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+                        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14,
+                        'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18
+                    };
+                    
+                    let holeNum = null;
+                    const digitMatch = text.match(/hole\s*(\d+)/i) || text.match(/^(\d+)/);
+                    if (digitMatch) {
+                        holeNum = parseInt(digitMatch[1]);
                     } else {
-                        await this.voice.speak("What hole number? Just say the number.");
-                        return;
+                        const lowerText = text.toLowerCase();
+                        for (const [word, num] of Object.entries(spokenNumbers)) {
+                            if (lowerText.includes('hole ' + word) || lowerText.startsWith(word)) {
+                                holeNum = num;
+                                break;
+                            }
+                        }
                     }
+                    
+                    if (holeNum && holeNum >= 1 && holeNum <= 18) {
+                        // Remove "hole X" from the note text
+                        let note = text.replace(/^hole\s*\d+\s*[,.]?\s*/i, '').trim();
+                        // Also strip spoken number at start
+                        for (const word of Object.keys(spokenNumbers)) {
+                            note = note.replace(new RegExp('^hole\\s*' + word + '\\s*[,.]?\\s*', 'i'), '').trim();
+                        }
+                        
+                        if (note.length > 0) {
+                            const courseName = this.storage.data.currentRound.course;
+                            this.storage.saveCourseNote(courseName, holeNum, note);
+                            await this.voice.speak(`Saved to hole ${holeNum}. Keep going or say done.`);
+                        } else {
+                            await this.voice.speak(`Hole ${holeNum}. Now describe what you see.`);
+                            this.scoutHole = holeNum;
+                        }
+                    } else if (this.scoutHole && text.length > 5) {
+                        // No hole number but we have one from before - save the note
+                        const courseName = this.storage.data.currentRound.course;
+                        this.storage.saveCourseNote(courseName, this.scoutHole, text);
+                        await this.voice.speak(`Saved to hole ${this.scoutHole}. Keep going or say done.`);
+                    } else if (lowerCmd.includes('done') || lowerCmd.includes('exit') || lowerCmd.includes('stop')) {
+                        this.scoutMode = false;
+                        this.scoutHole = null;
+                        await this.voice.speak('Scout mode off.');
+                    } else {
+                        await this.voice.speak("Start with the hole number. Like: hole 3, green slopes left.");
+                    }
+                    return;
                 }
 
                 // ==========================================
@@ -2633,10 +2693,12 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 
                 // ==========================================
                 // FAST VECTOR PUTTING — instant, no API call
-                // "15 feet 2% breaks left to right"
-                // "10 feet 3 percent right to left downhill"
+                // Catches natural speech: "15 feet right to left", 
+                // "I'm 15 feet below the hole left to right",
+                // "20 footer breaks left", "10 feet 2% downhill"
                 // ==========================================
-                const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i);
+                const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i) || 
+                                  text.match(/(\d+)\s*(?:below|above|from)/i);
                 const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
                 const hasBreak = lowerCmd.includes('left') || lowerCmd.includes('right') || lowerCmd.includes('straight');
                 
@@ -2660,8 +2722,8 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     
                     // Detect uphill/downhill
                     let elevation = 'level';
-                    if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill')) elevation = 'uphill';
-                    if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill')) elevation = 'downhill';
+                    if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill') || lowerCmd.includes('below')) elevation = 'uphill';
+                    if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill') || lowerCmd.includes('above')) elevation = 'downhill';
                     
                     // Get stimp from storage or default
                     const stimp = this.storage.data.profile.stimp || 9;
@@ -2706,6 +2768,89 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 }
 
                 // ==========================================
+                // WIND DETECTION — remember wind for club adjustments
+                // "wind is at my back" / "into the wind" / "wind left to right"
+                // ==========================================
+                if (lowerCmd.includes('wind')) {
+                    if (lowerCmd.includes('at my back') || lowerCmd.includes('behind') || lowerCmd.includes('downwind') || lowerCmd.includes('helping')) {
+                        this.currentWind = 'helping';
+                        await this.voice.speak('Wind helping. I\'ll club you down.');
+                    } else if (lowerCmd.includes('into') || lowerCmd.includes('in my face') || lowerCmd.includes('headwind') || lowerCmd.includes('against') || lowerCmd.includes('at me')) {
+                        this.currentWind = 'hurting';
+                        await this.voice.speak('Into the wind. I\'ll club you up.');
+                    } else if (lowerCmd.includes('left to right') || lowerCmd.includes('off the left') || lowerCmd.includes('from the left')) {
+                        this.currentWind = 'left';
+                        await this.voice.speak('Wind left to right. Aim left and let it ride.');
+                    } else if (lowerCmd.includes('right to left') || lowerCmd.includes('off the right') || lowerCmd.includes('from the right')) {
+                        this.currentWind = 'right';
+                        await this.voice.speak('Wind right to left. Aim right and let it ride.');
+                    } else if (lowerCmd.includes('no wind') || lowerCmd.includes('calm') || lowerCmd.includes('died')) {
+                        this.currentWind = null;
+                        await this.voice.speak('No wind. Playing stock numbers.');
+                    } else {
+                        this.currentWind = 'unknown';
+                        await this.voice.speak('Got it, wind is a factor.');
+                    }
+                    return;
+                }
+                
+                // ==========================================
+                // FAST CLUB RECOMMENDATION — instant, no API call
+                // Detects distance mentions and recommends from player's bag
+                // Adjusts for wind when set
+                // "I'm 150 out" / "150 to the pin" / "got 125"
+                // ==========================================
+                const yardageMatch = text.match(/(\d{2,3})\s*(?:yards?|out|to the|to pin|from|left|away)?/i);
+                const isAskingClub = lowerCmd.includes('what club') || lowerCmd.includes('which club') || lowerCmd.includes('club should');
+                
+                if (yardageMatch && (isAskingClub || lowerCmd.includes('out') || lowerCmd.includes('to the') || lowerCmd.includes('to pin') || lowerCmd.includes('from the'))) {
+                    const targetDist = parseInt(yardageMatch[1]);
+                    if (targetDist >= 50 && targetDist <= 300) {
+                        const clubs = this.storage.data.profile.clubDistances;
+                        
+                        // Adjust for wind: helping = play less club, hurting = play more club
+                        let effectiveDist = targetDist;
+                        let windNote = '';
+                        if (this.currentWind === 'helping') {
+                            effectiveDist = Math.round(targetDist * 0.9); // 10% less
+                            windNote = ' Wind helping, playing it shorter.';
+                        } else if (this.currentWind === 'hurting') {
+                            effectiveDist = Math.round(targetDist * 1.1); // 10% more
+                            windNote = ' Into the wind, clubbing up.';
+                        } else if (this.currentWind === 'left' || this.currentWind === 'right') {
+                            windNote = ` Wind ${this.currentWind === 'left' ? 'left to right' : 'right to left'}, aim accordingly.`;
+                        }
+                        
+                        let bestClub = null;
+                        let bestDiff = Infinity;
+                        
+                        for (const [club, dist] of Object.entries(clubs)) {
+                            const diff = Math.abs(dist - effectiveDist);
+                            if (diff < bestDiff) {
+                                bestDiff = diff;
+                                bestClub = club;
+                            }
+                        }
+                        
+                        if (bestClub) {
+                            const clubDist = clubs[bestClub];
+                            let advice = '';
+                            if (Math.abs(clubDist - targetDist) <= 3) {
+                                advice = `${targetDist} yards. Stock ${bestClub}.`;
+                            } else if (clubDist > targetDist) {
+                                advice = `${targetDist} yards. Easy ${bestClub}, your stock is ${clubDist}.`;
+                            } else {
+                                advice = `${targetDist} yards. Full ${bestClub}, your stock is ${clubDist}.`;
+                            }
+                            advice += windNote;
+                            
+                            await this.voice.speak(advice);
+                            this.gaveFastAnswer = true;
+                        }
+                    }
+                }
+
+                // ==========================================
                 // EVERYTHING GOES TO AI
                 // Claude tracks ALL game data via [DATA] blocks
                 // ==========================================
@@ -2739,8 +2884,11 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                         this.updateDisplay();
                     }
                     
-                    // Speak only the conversational part
-                    await this.voice.speak(result.spoken);
+                    // Only speak Claude's response if we didn't already give a fast answer
+                    if (!this.gaveFastAnswer) {
+                        await this.voice.speak(result.spoken);
+                    }
+                    this.gaveFastAnswer = false;
                 } catch (err) {
                     console.error('AI error:', err);
                     await this.voice.speak("Having trouble connecting. Check your signal.");
@@ -2899,14 +3047,13 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
             startAerialUpload() {
                 const courseName = this.storage.data.currentRound?.course;
                 if (!courseName) {
-                    this.voice.speak("Start a round first so I know what course to save these to. Say hey and the course name.");
+                    this.voice.speak("Start a round first so I know what course to save to. Say hey and the course name.");
                     return;
                 }
                 
-                // Open file picker immediately (iOS requires this from user tap)
-                // We'll ask what hole after they pick the photo
-                this.aerialNeedsHole = true;
-                document.getElementById('aerialInput').click();
+                // Enter scout mode - next voice input saves as a course note
+                this.scoutMode = true;
+                this.voice.speak("Scout mode. Tell me the hole number and what you see. Like: hole 3, green slopes left to right, bunker front right.");
             }
             
             async processAerialPhoto(event) {
