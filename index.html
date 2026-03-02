@@ -242,6 +242,528 @@
             display: none;
         }
         
+        /* ==========================================
+           STATS/HISTORY OVERLAY PANEL
+           ========================================== */
+        .stats-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0a1a1f 0%, #142830 50%, #1a3040 100%);
+            z-index: 999;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .stats-overlay.active {
+            display: flex;
+        }
+        
+        .stats-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 20px 0;
+            flex-shrink: 0;
+        }
+        
+        .stats-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .stats-close:active { transform: scale(0.9); }
+        
+        .stats-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Tabs */
+        .stats-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 16px 20px 0;
+            flex-shrink: 0;
+        }
+        
+        .stats-tab {
+            flex: 1;
+            padding: 10px 0;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        
+        .stats-tab.active {
+            background: rgba(74, 222, 128, 0.12);
+            border-color: rgba(74, 222, 128, 0.25);
+            color: #4ade80;
+        }
+        
+        .stats-tab:active { transform: scale(0.97); }
+        
+        /* Tab Content */
+        .stats-tab-content {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px 20px 30px;
+        }
+        
+        .stats-tab-pane {
+            display: none;
+        }
+        
+        .stats-tab-pane.active {
+            display: block;
+        }
+        
+        /* Score Banner */
+        .score-banner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 16px;
+        }
+        
+        .score-big {
+            text-align: center;
+        }
+        
+        .score-big .num {
+            font-size: 2.8rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1;
+        }
+        
+        .score-big .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+            margin-top: 4px;
+        }
+        
+        .score-divider {
+            width: 1px;
+            height: 50px;
+            background: rgba(255,255,255,0.15);
+        }
+        
+        .score-vs-par {
+            text-align: center;
+        }
+        
+        .score-vs-par .diff {
+            font-size: 1.6rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .diff.under { color: #4ade80; }
+        .diff.over { color: #f87171; }
+        .diff.even { color: #fbbf24; }
+        
+        .score-vs-par .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+            margin-top: 4px;
+        }
+        
+        /* Stat Bars */
+        .stat-row {
+            margin-bottom: 14px;
+        }
+        
+        .stat-row-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+        }
+        
+        .stat-row-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .stat-row-value {
+            font-size: 0.85rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: #4ade80;
+        }
+        
+        .stat-bar-track {
+            height: 8px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .stat-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        
+        .bar-green { background: linear-gradient(90deg, #22c55e, #4ade80); }
+        .bar-blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .bar-amber { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .bar-red { background: linear-gradient(90deg, #ef4444, #f87171); }
+        .bar-purple { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        
+        /* Stat Mini Grid */
+        .stat-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .stat-mini {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 12px 8px;
+            text-align: center;
+        }
+        
+        .stat-mini .val {
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: #4ade80;
+        }
+        
+        .stat-mini .lbl {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            opacity: 0.5;
+            margin-top: 2px;
+        }
+        
+        /* Hole Scorecard (Visual History) */
+        .hole-scorecard {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        
+        .hole-chip {
+            position: relative;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 8px 4px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        
+        .hole-chip .hole-num {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            opacity: 0.45;
+            margin-bottom: 2px;
+        }
+        
+        .hole-chip .hole-score {
+            font-size: 1.3rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .hole-chip .hole-par-label {
+            font-size: 0.55rem;
+            opacity: 0.4;
+            margin-top: 1px;
+        }
+        
+        /* Score colors */
+        .hole-chip.eagle { border-color: #facc15; background: rgba(250, 204, 21, 0.12); }
+        .hole-chip.eagle .hole-score { color: #facc15; }
+        .hole-chip.birdie { border-color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+        .hole-chip.birdie .hole-score { color: #4ade80; }
+        .hole-chip.par-score { border-color: rgba(255,255,255,0.2); }
+        .hole-chip.par-score .hole-score { color: rgba(255,255,255,0.8); }
+        .hole-chip.bogey { border-color: #f87171; background: rgba(248, 113, 113, 0.08); }
+        .hole-chip.bogey .hole-score { color: #f87171; }
+        .hole-chip.double-plus { border-color: #ef4444; background: rgba(239, 68, 68, 0.12); }
+        .hole-chip.double-plus .hole-score { color: #ef4444; }
+        
+        /* Hole detail icons */
+        .hole-icons {
+            display: flex;
+            justify-content: center;
+            gap: 2px;
+            margin-top: 3px;
+            font-size: 0.55rem;
+            opacity: 0.6;
+        }
+        
+        /* Club Usage Chart */
+        .club-bar-chart {
+            margin-bottom: 16px;
+        }
+        
+        .club-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .club-bar-name {
+            width: 65px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.6);
+            text-align: right;
+            flex-shrink: 0;
+        }
+        
+        .club-bar-track {
+            flex: 1;
+            height: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .club-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: rgba(0,0,0,0.7);
+            min-width: 28px;
+            transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        
+        /* Section Titles */
+        .section-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: rgba(255,255,255,0.35);
+            margin-bottom: 10px;
+            margin-top: 20px;
+        }
+        
+        .section-label:first-child { margin-top: 0; }
+        
+        /* Round History Cards */
+        .round-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .round-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .round-card-course {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+        
+        .round-card-date {
+            font-size: 0.7rem;
+            opacity: 0.4;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .round-card-score {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .round-card-detail {
+            font-size: 0.75rem;
+            opacity: 0.5;
+        }
+        
+        .round-mini-holes {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        
+        .round-mini-chip {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .mini-eagle { background: rgba(250, 204, 21, 0.25); color: #facc15; }
+        .mini-birdie { background: rgba(74, 222, 128, 0.25); color: #4ade80; }
+        .mini-par { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+        .mini-bogey { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .mini-double { background: rgba(239, 68, 68, 0.25); color: #ef4444; }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            opacity: 0.4;
+        }
+        
+        .empty-state .emoji { font-size: 2.5rem; margin-bottom: 12px; }
+        .empty-state .msg { font-size: 0.9rem; }
+        
+        /* ==========================================
+           PUTT VISUALIZATION
+           ========================================== */
+        .putt-viz-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .putt-viz-overlay.active {
+            display: flex;
+        }
+        
+        .putt-viz-container {
+            width: 100%;
+            max-width: 360px;
+            position: relative;
+        }
+        
+        .putt-viz-info {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+        
+        .putt-viz-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #4ade80;
+            margin-bottom: 4px;
+        }
+        
+        .putt-viz-subtitle {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.5);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .putt-viz-svg {
+            width: 100%;
+            border-radius: 20px;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+        
+        .putt-viz-legend {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .putt-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.65rem;
+            color: rgba(255,255,255,0.5);
+        }
+        
+        .putt-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .putt-legend-line {
+            width: 14px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        
+        .putt-viz-dismiss {
+            margin-top: 16px;
+            padding: 12px 32px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 25px;
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+        }
+        
+        .putt-viz-dismiss:active { transform: scale(0.95); }
+        
         /* Setup Mode */
         .setup-mode {
             display: none;
@@ -327,6 +849,59 @@
         <!-- Hidden file input for aerial photos (from gallery, no camera) -->
         <input type="file" id="aerialInput" accept="image/*" multiple style="display:none;">
         
+    </div>
+    
+    <!-- ==========================================
+         STATS / HISTORY OVERLAY
+         ========================================== -->
+    <div class="stats-overlay" id="statsOverlay">
+        <div class="stats-header">
+            <div class="stats-title">Performance</div>
+            <button class="stats-close" id="statsClose">✕</button>
+        </div>
+        
+        <div class="stats-tabs">
+            <div class="stats-tab active" data-tab="today">Today</div>
+            <div class="stats-tab" data-tab="clubs">Clubs</div>
+            <div class="stats-tab" data-tab="history">History</div>
+        </div>
+        
+        <div class="stats-tab-content">
+            <!-- TODAY TAB -->
+            <div class="stats-tab-pane active" id="pane-today">
+                <div id="todayContent"></div>
+            </div>
+            
+            <!-- CLUBS TAB -->
+            <div class="stats-tab-pane" id="pane-clubs">
+                <div id="clubsContent"></div>
+            </div>
+            
+            <!-- HISTORY TAB -->
+            <div class="stats-tab-pane" id="pane-history">
+                <div id="historyContent"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ==========================================
+         PUTT VISUALIZATION OVERLAY
+         ========================================== -->
+    <div class="putt-viz-overlay" id="puttVizOverlay">
+        <div class="putt-viz-container">
+            <div class="putt-viz-info">
+                <div class="putt-viz-title" id="puttVizTitle">15ft · 2 o'clock</div>
+                <div class="putt-viz-subtitle" id="puttVizSubtitle">Aim 8 inches left of center</div>
+            </div>
+            <svg id="puttVizSVG" class="putt-viz-svg" viewBox="0 0 360 480" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div class="putt-viz-legend">
+                <div class="putt-legend-item"><div class="putt-legend-dot" style="background: #fff;"></div> Ball</div>
+                <div class="putt-legend-item"><div class="putt-legend-line" style="background: #fbbf24;"></div> Aim line</div>
+                <div class="putt-legend-item"><div class="putt-legend-line" style="background: #4ade80; border-radius: 50%;"></div> Ball path</div>
+                <div class="putt-legend-item"><div class="putt-legend-dot" style="background: #333; border: 2px solid #fff;"></div> Hole</div>
+            </div>
+        </div>
+        <button class="putt-viz-dismiss" id="puttVizDismiss">Got it</button>
     </div>
 
     <script>
@@ -2290,6 +2865,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 this.setupMode = 'initial'; // initial, playing
                 this.setupEventListeners();
                 this.setupVisibilityHandling();
+                this.initStatsPanel();
             }
 
             setupVisibilityHandling() {
@@ -2355,8 +2931,8 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
             setupEventListeners() {
                 document.getElementById('startBtn').addEventListener('click', () => this.start());
                 document.getElementById('voiceOrb').addEventListener('click', () => this.handleVoice());
-                document.getElementById('statsBtn').addEventListener('click', () => this.speakStats());
-                document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
+                document.getElementById('statsBtn').addEventListener('click', () => this.openStatsPanel('today'));
+                document.getElementById('historyBtn').addEventListener('click', () => this.openStatsPanel('history'));
                 document.getElementById('greenReadBtn').addEventListener('click', () => this.startGreenRead());
                 document.getElementById('aerialBtn').addEventListener('click', () => this.startAerialUpload());
                 document.getElementById('practiceBtn').addEventListener('click', () => this.togglePracticeMode());
@@ -2708,6 +3284,9 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     // Check if this is a result (made/missed)
                     const resultMsg = this.processPracticeResult(text);
                     if (resultMsg) {
+                        // Dismiss putt viz if showing
+                        document.getElementById('puttVizOverlay').classList.remove('active');
+                        if (this._puttVizTimer) clearTimeout(this._puttVizTimer);
                         await this.voice.speak(resultMsg);
                         return;
                     }
@@ -2771,8 +3350,10 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                                     if (clockPos >= 10 || clockPos <= 2) advice += 'Downhill, soft touch.';
                                     else if (clockPos >= 4 && clockPos <= 8) advice += 'Uphill, firm.';
                                     else advice += 'Center cup.';
+                                    this.showPuttVisualization(feet, clockPos, breakDir || 'straight', elevation, slope, aimPoint);
                                     await this.voice.speak(advice);
                                 } else {
+                                    this.showPuttVisualization(feet, clockPos, breakDir || aimPoint.direction, elevation, slope, aimPoint);
                                     await this.voice.speak(`${feet} feet, ${clockPos} o'clock. ${aimPoint.description}.`);
                                 }
                             } else if (breakDir === 'straight') {
@@ -2780,9 +3361,11 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                                 if (elevation === 'uphill') advice += 'Uphill, firm.';
                                 else if (elevation === 'downhill') advice += 'Downhill, soft.';
                                 else advice += 'Center cup.';
+                                this.showPuttVisualization(feet, null, 'straight', elevation, slope, { inches: 0, direction: '', description: 'Straight putt' });
                                 await this.voice.speak(advice);
                             } else if (breakDir) {
                                 const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation);
+                                this.showPuttVisualization(feet, null, breakDir, elevation, slope, aimPoint);
                                 await this.voice.speak(`${aimPoint.description}.`);
                             } else {
                                 await this.voice.speak(`${feet} feet. Which way does it break? Or give me a clock.`);
@@ -3662,7 +4245,570 @@ End with [DATA] block:
                 });
             }
 
+            // ==========================================
+            // VISUAL STATS / HISTORY PANEL
+            // ==========================================
+            
+            initStatsPanel() {
+                const overlay = document.getElementById('statsOverlay');
+                const closeBtn = document.getElementById('statsClose');
+                
+                closeBtn.addEventListener('click', () => {
+                    overlay.classList.remove('active');
+                });
+                
+                // Tab switching
+                document.querySelectorAll('.stats-tab').forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        document.querySelectorAll('.stats-tab').forEach(t => t.classList.remove('active'));
+                        document.querySelectorAll('.stats-tab-pane').forEach(p => p.classList.remove('active'));
+                        tab.classList.add('active');
+                        document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
+                    });
+                });
+                
+                // Putt viz dismiss
+                document.getElementById('puttVizDismiss').addEventListener('click', () => {
+                    document.getElementById('puttVizOverlay').classList.remove('active');
+                });
+            }
+            
+            // ==========================================
+            // PUTT VISUALIZATION — SVG green with ball, hole, aim, break
+            // ==========================================
+            showPuttVisualization(feet, clockPos, breakDir, elevation, slope, aimPoint) {
+                const svg = document.getElementById('puttVizSVG');
+                const W = 360, H = 480;
+                const cx = W / 2, cy = H / 2;
+                
+                // Green dimensions
+                const greenRx = 155, greenRy = 210;
+                
+                // Hole position — always near top-center of green
+                const holeX = cx, holeY = cy - 100;
+                const holeR = 10; // visual hole radius
+                
+                // Ball position from clock + distance
+                // Clock: 12=above hole, 6=below, 3=right, 9=left
+                // Map feet to pixels (scale: ~3px per foot, clamped)
+                const maxPixelDist = 180;
+                const pixelDist = Math.min(maxPixelDist, Math.max(40, feet * 3));
+                
+                // Clock to angle (12 o'clock = straight up from hole = 180° in SVG coords)
+                // From the hole's perspective looking down, clock positions radiate outward
+                const clockAngles = {
+                    12: 180, 1: 210, 2: 240, 3: 270, 4: 300, 5: 330,
+                    6: 0, 7: 30, 8: 60, 9: 90, 10: 120, 11: 150
+                };
+                
+                const angleDeg = clockPos !== null ? (clockAngles[clockPos] || 0) : 0;
+                const angleRad = angleDeg * Math.PI / 180;
+                
+                // Ball position (relative to hole)
+                const ballX = holeX + Math.sin(angleRad) * pixelDist;
+                const ballY = holeY - Math.cos(angleRad) * pixelDist;
+                
+                // Aim point offset
+                // aimPoint.inches = how far off center, aimPoint.direction = 'left' or 'right'
+                const aimInches = aimPoint ? aimPoint.inches : 0;
+                const aimDir = aimPoint ? aimPoint.direction : '';
+                
+                // Scale aim offset to pixels (1 inch ≈ 1.5px for visual clarity)
+                const aimOffsetPx = Math.min(60, aimInches * 1.5);
+                let aimX = holeX;
+                if (aimDir === 'left') aimX = holeX - aimOffsetPx;
+                else if (aimDir === 'right') aimX = holeX + aimOffsetPx;
+                const aimY = holeY; // aim point is at hole's Y level
+                
+                // Build SVG
+                let s = '';
+                
+                // Background green
+                s += `<defs>
+                    <radialGradient id="greenGrad" cx="50%" cy="45%" r="55%">
+                        <stop offset="0%" style="stop-color:#2d6b3f"/>
+                        <stop offset="70%" style="stop-color:#1a5c30"/>
+                        <stop offset="100%" style="stop-color:#134a25"/>
+                    </radialGradient>
+                    <radialGradient id="holeGrad" cx="40%" cy="35%" r="50%">
+                        <stop offset="0%" style="stop-color:#1a1a1a"/>
+                        <stop offset="100%" style="stop-color:#000"/>
+                    </radialGradient>
+                    <filter id="glow">
+                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                    <filter id="softGlow">
+                        <feGaussianBlur stdDeviation="6" result="blur"/>
+                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                </defs>`;
+                
+                // Green surface
+                s += `<ellipse cx="${cx}" cy="${cy}" rx="${greenRx}" ry="${greenRy}" fill="url(#greenGrad)" stroke="#2a8a4a" stroke-width="2"/>`;
+                
+                // Subtle mow lines
+                for (let i = -5; i <= 5; i++) {
+                    const ly = cy + i * 38;
+                    s += `<line x1="${cx - greenRx + 20}" y1="${ly}" x2="${cx + greenRx - 20}" y2="${ly}" stroke="rgba(255,255,255,0.03)" stroke-width="18"/>`;
+                }
+                
+                // Fringe
+                s += `<ellipse cx="${cx}" cy="${cy}" rx="${greenRx}" ry="${greenRy}" fill="none" stroke="#3a7a4a" stroke-width="6" opacity="0.4"/>`;
+                
+                // Slope indicator arrow (shows general slope direction — downhill toward 6 o'clock)
+                if (slope > 0) {
+                    const slopeLabel = `${slope}% slope`;
+                    // Arrow pointing downhill (toward 6 o'clock in the clock model)
+                    const arrowStartY = cy - 60;
+                    const arrowEndY = cy + 30;
+                    s += `<line x1="${cx + 60}" y1="${arrowStartY}" x2="${cx + 60}" y2="${arrowEndY}" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-dasharray="4,4"/>`;
+                    s += `<polygon points="${cx + 60},${arrowEndY + 8} ${cx + 54},${arrowEndY - 2} ${cx + 66},${arrowEndY - 2}" fill="rgba(255,255,255,0.15)"/>`;
+                    s += `<text x="${cx + 60}" y="${arrowStartY - 8}" text-anchor="middle" fill="rgba(255,255,255,0.25)" font-size="10" font-family="JetBrains Mono">${slopeLabel}</text>`;
+                }
+                
+                // Elevation label
+                if (elevation !== 'level') {
+                    const elevLabel = elevation === 'uphill' ? '⬆ UPHILL' : '⬇ DOWNHILL';
+                    s += `<text x="${cx - 60}" y="${cy - greenRy + 30}" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="JetBrains Mono">${elevLabel}</text>`;
+                }
+                
+                // Hole
+                s += `<circle cx="${holeX}" cy="${holeY}" r="${holeR + 3}" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>`;
+                s += `<circle cx="${holeX}" cy="${holeY}" r="${holeR}" fill="url(#holeGrad)"/>`;
+                // Flag
+                s += `<line x1="${holeX}" y1="${holeY}" x2="${holeX}" y2="${holeY - 30}" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>`;
+                s += `<polygon points="${holeX},${holeY - 30} ${holeX + 14},${holeY - 24} ${holeX},${holeY - 18}" fill="#ef4444" opacity="0.8"/>`;
+                
+                // Aim point marker (small X or dot where you should start the ball)
+                if (aimInches >= 2) {
+                    s += `<circle cx="${aimX}" cy="${aimY}" r="4" fill="#fbbf24" opacity="0.7" filter="url(#glow)"/>`;
+                    s += `<text x="${aimX}" y="${aimY - 10}" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="JetBrains Mono" opacity="0.8">AIM</text>`;
+                }
+                
+                // Aim line — straight from ball toward aim point (dashed, gold)
+                if (aimInches >= 2) {
+                    // Extend aim line past the aim point
+                    const dx = aimX - ballX, dy = aimY - ballY;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const extendBy = 30;
+                    const extX = aimX + (dx / len) * extendBy;
+                    const extY = aimY + (dy / len) * extendBy;
+                    s += `<line x1="${ballX}" y1="${ballY}" x2="${extX}" y2="${extY}" stroke="#fbbf24" stroke-width="2" stroke-dasharray="6,4" opacity="0.7"/>`;
+                }
+                
+                // Ball path — curved from ball to hole showing the break
+                // Use a quadratic bezier: ball → (control point offset by break) → hole
+                if (aimInches >= 2) {
+                    // Control point is offset from the midpoint between ball and hole
+                    const midX = (ballX + holeX) / 2;
+                    const midY = (ballY + holeY) / 2;
+                    
+                    // Break curves away from aim direction (ball starts toward aim, curves to hole)
+                    // If aiming left, ball curves right toward hole (and vice versa)
+                    const curveMagnitude = Math.min(80, aimOffsetPx * 1.8);
+                    let cpX = midX;
+                    if (aimDir === 'left') cpX = midX - curveMagnitude * 0.6;
+                    else if (aimDir === 'right') cpX = midX + curveMagnitude * 0.6;
+                    const cpY = midY;
+                    
+                    s += `<path d="M${ballX},${ballY} Q${cpX},${cpY} ${holeX},${holeY}" fill="none" stroke="#4ade80" stroke-width="2.5" opacity="0.6" stroke-dasharray="3,3" filter="url(#softGlow)"/>`;
+                    
+                    // Small arrow at the midpoint of the curve to show direction
+                    // Calculate midpoint of quadratic bezier at t=0.5
+                    const t = 0.5;
+                    const bezMidX = (1 - t) * (1 - t) * ballX + 2 * (1 - t) * t * cpX + t * t * holeX;
+                    const bezMidY = (1 - t) * (1 - t) * ballY + 2 * (1 - t) * t * cpY + t * t * holeY;
+                    // Tangent at t=0.5
+                    const tanX = 2 * (1 - t) * (cpX - ballX) + 2 * t * (holeX - cpX);
+                    const tanY = 2 * (1 - t) * (cpY - ballY) + 2 * t * (holeY - cpY);
+                    const tanLen = Math.sqrt(tanX * tanX + tanY * tanY);
+                    if (tanLen > 0) {
+                        const nx = tanX / tanLen, ny = tanY / tanLen;
+                        const arrowSize = 6;
+                        s += `<polygon points="${bezMidX + nx * arrowSize},${bezMidY + ny * arrowSize} ${bezMidX - ny * arrowSize * 0.6 - nx * arrowSize * 0.3},${bezMidY + nx * arrowSize * 0.6 - ny * arrowSize * 0.3} ${bezMidX + ny * arrowSize * 0.6 - nx * arrowSize * 0.3},${bezMidY - nx * arrowSize * 0.6 - ny * arrowSize * 0.3}" fill="#4ade80" opacity="0.5"/>`;
+                    }
+                } else {
+                    // Straight putt — just a line
+                    s += `<line x1="${ballX}" y1="${ballY}" x2="${holeX}" y2="${holeY}" stroke="#4ade80" stroke-width="2.5" opacity="0.5" stroke-dasharray="3,3" filter="url(#softGlow)"/>`;
+                }
+                
+                // Ball
+                s += `<circle cx="${ballX}" cy="${ballY}" r="8" fill="white" filter="url(#glow)"/>`;
+                s += `<circle cx="${ballX - 2}" cy="${ballY - 2}" r="2" fill="rgba(200,200,200,0.6)"/>`;
+                
+                // Distance label near ball
+                s += `<text x="${ballX}" y="${ballY + 22}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11" font-weight="700" font-family="JetBrains Mono">${feet}ft</text>`;
+                
+                // Clock position label
+                if (clockPos !== null) {
+                    s += `<text x="${ballX}" y="${ballY + 35}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="9" font-family="JetBrains Mono">${clockPos} o'clock</text>`;
+                }
+                
+                svg.innerHTML = s;
+                
+                // Update text labels
+                let titleText = `${feet}ft`;
+                if (clockPos !== null) titleText += ` · ${clockPos} o'clock`;
+                if (elevation !== 'level') titleText += ` · ${elevation}`;
+                document.getElementById('puttVizTitle').textContent = titleText;
+                
+                let subText = aimPoint ? aimPoint.description : 'Straight putt';
+                document.getElementById('puttVizSubtitle').textContent = subText;
+                
+                // Show overlay
+                document.getElementById('puttVizOverlay').classList.add('active');
+                
+                // Auto-dismiss after 8 seconds so it doesn't block voice flow
+                if (this._puttVizTimer) clearTimeout(this._puttVizTimer);
+                this._puttVizTimer = setTimeout(() => {
+                    document.getElementById('puttVizOverlay').classList.remove('active');
+                }, 8000);
+            }
+            
+            openStatsPanel(tab = 'today') {
+                this.renderToday();
+                this.renderClubs();
+                this.renderHistory();
+                
+                // Activate correct tab
+                document.querySelectorAll('.stats-tab').forEach(t => {
+                    t.classList.toggle('active', t.dataset.tab === tab);
+                });
+                document.querySelectorAll('.stats-tab-pane').forEach(p => {
+                    p.classList.toggle('active', p.id === 'pane-' + tab);
+                });
+                
+                document.getElementById('statsOverlay').classList.add('active');
+            }
+            
+            renderToday() {
+                const container = document.getElementById('todayContent');
+                const round = this.storage.data.currentRound;
+                
+                if (!round || round.holes.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="emoji">⛳</div>
+                            <div class="msg">No holes completed yet today.<br>Start playing to see your stats!</div>
+                        </div>`;
+                    return;
+                }
+                
+                const holesPlayed = round.holes.length;
+                const totalScore = round.score;
+                const par = round.holes.reduce((sum, h) => sum + (h.par || 4), 0);
+                const diff = totalScore - par;
+                const diffStr = diff === 0 ? 'E' : diff > 0 ? '+' + diff : '' + diff;
+                const diffClass = diff < 0 ? 'under' : diff > 0 ? 'over' : 'even';
+                
+                const rs = this.storage.getRoundStats();
+                
+                let html = '';
+                
+                // Score Banner
+                html += `
+                    <div class="score-banner">
+                        <div class="score-big">
+                            <div class="num">${totalScore}</div>
+                            <div class="label">${holesPlayed} holes</div>
+                        </div>
+                        <div class="score-divider"></div>
+                        <div class="score-vs-par">
+                            <div class="diff ${diffClass}">${diffStr}</div>
+                            <div class="label">vs par ${par}</div>
+                        </div>
+                    </div>`;
+                
+                // Hole-by-hole visual scorecard
+                html += `<div class="section-label">Scorecard</div>`;
+                html += `<div class="hole-scorecard">`;
+                round.holes.forEach((h, i) => {
+                    const score = h.finalScore || 0;
+                    const holePar = h.par || 4;
+                    const diff = score - holePar;
+                    let cls = 'par-score';
+                    if (diff <= -2) cls = 'eagle';
+                    else if (diff === -1) cls = 'birdie';
+                    else if (diff === 0) cls = 'par-score';
+                    else if (diff === 1) cls = 'bogey';
+                    else cls = 'double-plus';
+                    
+                    const stats = h.stats || {};
+                    let icons = '';
+                    if (stats.fairway) icons += '🟢';
+                    if (stats.gir) icons += '🎯';
+                    if (stats.updown) icons += '⬆';
+                    
+                    html += `
+                        <div class="hole-chip ${cls}">
+                            <div class="hole-num">H${h.number}</div>
+                            <div class="hole-score">${score}</div>
+                            <div class="hole-par-label">Par ${holePar}</div>
+                            ${icons ? `<div class="hole-icons">${icons}</div>` : ''}
+                        </div>`;
+                });
+                html += `</div>`;
+                
+                // Stat bars
+                if (rs) {
+                    html += `<div class="section-label">Performance</div>`;
+                    
+                    // Fairways
+                    if (rs.fairwayAttempts > 0) {
+                        const pct = Math.round(rs.fairways / rs.fairwayAttempts * 100);
+                        html += this.renderStatBar('Fairways', `${rs.fairways}/${rs.fairwayAttempts}`, pct, 'bar-green');
+                    }
+                    
+                    // GIR
+                    const girPct = Math.round(rs.girs / holesPlayed * 100);
+                    html += this.renderStatBar('Greens (GIR)', `${rs.girs}/${holesPlayed}`, girPct, 'bar-blue');
+                    
+                    // Putts per hole
+                    const pph = (rs.totalPutts / holesPlayed).toFixed(1);
+                    const puttPct = Math.max(0, Math.min(100, (3 - pph) / 2 * 100)); // 1.0=100%, 3.0=0%
+                    html += this.renderStatBar('Putts/Hole', pph, puttPct, 'bar-amber');
+                    
+                    // Up & Down
+                    if (rs.upDownAttempts > 0) {
+                        const udPct = Math.round(rs.upDowns / rs.upDownAttempts * 100);
+                        html += this.renderStatBar('Up & Down', `${rs.upDowns}/${rs.upDownAttempts}`, udPct, 'bar-purple');
+                    }
+                    
+                    // Mini stats
+                    html += `
+                        <div class="stat-mini-grid">
+                            <div class="stat-mini">
+                                <div class="val">${rs.totalPutts}</div>
+                                <div class="lbl">Total Putts</div>
+                            </div>
+                            <div class="stat-mini">
+                                <div class="val">${round.holes.filter(h => (h.finalScore || 0) <= (h.par || 4)).length}</div>
+                                <div class="lbl">Pars or Better</div>
+                            </div>
+                            <div class="stat-mini">
+                                <div class="val">${round.holes.reduce((sum, h) => sum + ((h.stats?.penalties) || 0), 0)}</div>
+                                <div class="lbl">Penalties</div>
+                            </div>
+                        </div>`;
+                }
+                
+                container.innerHTML = html;
+            }
+            
+            renderStatBar(label, value, pct, colorClass) {
+                return `
+                    <div class="stat-row">
+                        <div class="stat-row-header">
+                            <span class="stat-row-label">${label}</span>
+                            <span class="stat-row-value">${value}</span>
+                        </div>
+                        <div class="stat-bar-track">
+                            <div class="stat-bar-fill ${colorClass}" style="width: ${Math.max(3, pct)}%"></div>
+                        </div>
+                    </div>`;
+            }
+            
+            renderClubs() {
+                const container = document.getElementById('clubsContent');
+                const perf = this.storage.data.clubPerformance || {};
+                const clubs = Object.entries(perf).filter(([, s]) => s.totalUses > 0);
+                
+                if (clubs.length === 0) {
+                    // Also check current round for club usage
+                    const round = this.storage.data.currentRound;
+                    const clubCounts = {};
+                    if (round) {
+                        round.holes.forEach(h => {
+                            (h.stats?.clubs || []).forEach(c => {
+                                clubCounts[c] = (clubCounts[c] || 0) + 1;
+                            });
+                        });
+                        // Include current hole
+                        (round.currentHole?.stats?.clubs || []).forEach(c => {
+                            clubCounts[c] = (clubCounts[c] || 0) + 1;
+                        });
+                    }
+                    
+                    const roundClubs = Object.entries(clubCounts);
+                    if (roundClubs.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="emoji">🏌️</div>
+                                <div class="msg">No club data yet.<br>Your clubs will appear here as you play.</div>
+                            </div>`;
+                        return;
+                    }
+                    
+                    // Show from current round
+                    container.innerHTML = this.buildClubChart(roundClubs.map(([name, count]) => ({
+                        name, uses: count, avgDist: null, girRate: null
+                    })));
+                    return;
+                }
+                
+                const maxUses = Math.max(...clubs.map(([, s]) => s.totalUses));
+                const colors = ['#4ade80', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f472b6', '#34d399', '#fb923c'];
+                
+                let html = `<div class="section-label">Club Usage</div>`;
+                html += `<div class="club-bar-chart">`;
+                
+                clubs.sort((a, b) => b[1].totalUses - a[1].totalUses).forEach(([club, stats], i) => {
+                    const pct = (stats.totalUses / maxUses) * 100;
+                    const color = colors[i % colors.length];
+                    html += `
+                        <div class="club-bar-row">
+                            <div class="club-bar-name">${club}</div>
+                            <div class="club-bar-track">
+                                <div class="club-bar-fill" style="width: ${Math.max(12, pct)}%; background: ${color};">
+                                    ${stats.totalUses}×
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                html += `</div>`;
+                
+                // Club detail cards
+                html += `<div class="section-label">Club Details</div>`;
+                clubs.sort((a, b) => b[1].totalUses - a[1].totalUses).forEach(([club, stats]) => {
+                    const avgDist = stats.distances.length > 0
+                        ? Math.round(stats.distances.reduce((a, b) => a + b, 0) / stats.distances.length)
+                        : null;
+                    const total = stats.results.green + stats.results.miss;
+                    const girRate = total > 0 ? Math.round(stats.results.green / total * 100) : null;
+                    
+                    html += `
+                        <div class="round-card">
+                            <div class="round-card-header">
+                                <div class="round-card-course">${club}</div>
+                                <div class="round-card-score">${stats.totalUses}×</div>
+                            </div>
+                            <div class="stat-mini-grid">
+                                <div class="stat-mini">
+                                    <div class="val">${avgDist !== null ? avgDist + 'y' : '—'}</div>
+                                    <div class="lbl">Avg Dist</div>
+                                </div>
+                                <div class="stat-mini">
+                                    <div class="val">${girRate !== null ? girRate + '%' : '—'}</div>
+                                    <div class="lbl">GIR Rate</div>
+                                </div>
+                                <div class="stat-mini">
+                                    <div class="val">${stats.conditions.wind || 0}</div>
+                                    <div class="lbl">Wind Uses</div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                
+                container.innerHTML = html;
+            }
+            
+            buildClubChart(clubData) {
+                if (clubData.length === 0) return '';
+                const maxUses = Math.max(...clubData.map(c => c.uses));
+                const colors = ['#4ade80', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f472b6'];
+                
+                let html = `<div class="section-label">Clubs Used This Round</div><div class="club-bar-chart">`;
+                clubData.sort((a, b) => b.uses - a.uses).forEach((c, i) => {
+                    const pct = (c.uses / maxUses) * 100;
+                    html += `
+                        <div class="club-bar-row">
+                            <div class="club-bar-name">${c.name}</div>
+                            <div class="club-bar-track">
+                                <div class="club-bar-fill" style="width: ${Math.max(12, pct)}%; background: ${colors[i % colors.length]};">
+                                    ${c.uses}×
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                html += `</div>`;
+                return html;
+            }
+            
+            renderHistory() {
+                const container = document.getElementById('historyContent');
+                const rounds = this.storage.data.rounds || [];
+                
+                if (rounds.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="emoji">📋</div>
+                            <div class="msg">No completed rounds yet.<br>Finish a round to build your history.</div>
+                        </div>`;
+                    return;
+                }
+                
+                let html = '';
+                
+                // Averages banner
+                const totalScores = rounds.reduce((s, r) => s + (r.score || 0), 0);
+                const totalHoles = rounds.reduce((s, r) => s + (r.holes?.length || 0), 0);
+                const avgScore = totalHoles > 0 ? (totalScores / rounds.length).toFixed(0) : '—';
+                
+                html += `
+                    <div class="stat-mini-grid">
+                        <div class="stat-mini">
+                            <div class="val">${rounds.length}</div>
+                            <div class="lbl">Rounds</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="val">${avgScore}</div>
+                            <div class="lbl">Avg Score</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="val">${totalHoles}</div>
+                            <div class="lbl">Total Holes</div>
+                        </div>
+                    </div>`;
+                
+                html += `<div class="section-label">Past Rounds</div>`;
+                
+                // Render rounds newest first
+                [...rounds].reverse().forEach(round => {
+                    const date = new Date(round.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+                    const holes = round.holes || [];
+                    const par = holes.reduce((s, h) => s + (h.par || 4), 0);
+                    const diff = (round.score || 0) - par;
+                    const diffStr = diff === 0 ? 'E' : diff > 0 ? '+' + diff : '' + diff;
+                    const diffClass = diff < 0 ? 'under' : diff > 0 ? 'over' : 'even';
+                    
+                    html += `
+                        <div class="round-card">
+                            <div class="round-card-header">
+                                <div>
+                                    <div class="round-card-course">${round.course || 'Unknown'}</div>
+                                    <div class="round-card-date">${date} · ${holes.length} holes</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div class="round-card-score">${round.score || 0}</div>
+                                    <div class="diff ${diffClass}" style="font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;">${diffStr}</div>
+                                </div>
+                            </div>
+                            <div class="round-mini-holes">`;
+                    
+                    holes.forEach(h => {
+                        const s = h.finalScore || 0;
+                        const p = h.par || 4;
+                        const d = s - p;
+                        let cls = 'mini-par';
+                        if (d <= -2) cls = 'mini-eagle';
+                        else if (d === -1) cls = 'mini-birdie';
+                        else if (d === 1) cls = 'mini-bogey';
+                        else if (d >= 2) cls = 'mini-double';
+                        
+                        html += `<div class="round-mini-chip ${cls}">${s}</div>`;
+                    });
+                    
+                    html += `</div></div>`;
+                });
+                
+                container.innerHTML = html;
+            }
+
             async speakStats() {
+                // Open visual panel AND speak
+                this.openStatsPanel('today');
+                
                 const round = this.storage.data.currentRound;
                 if (!round || round.holes.length === 0) {
                     await this.voice.speak("No holes completed yet. Let's get some data first!");
@@ -3690,17 +4836,13 @@ End with [DATA] block:
                     }
                 }
                 
-                // Let AI add a coaching comment
-                const result = await this.ai.ask(
-                    `Give me a quick one-sentence coaching takeaway based on my stats: ${statsMsg}`,
-                    { playerClubs: this.storage.data.profile.clubDistances }
-                );
-                if (result.spoken) statsMsg += result.spoken;
-                
                 await this.voice.speak(statsMsg);
             }
 
             async speakHistory() {
+                // Open visual panel to history tab AND speak
+                this.openStatsPanel('history');
+                
                 const rounds = this.storage.data.rounds;
                 const currentRound = this.storage.data.currentRound;
                 
@@ -3711,40 +4853,28 @@ End with [DATA] block:
                 
                 let historyMsg = '';
                 
-                // Recent rounds summary
                 const recentRounds = (rounds || []).slice(-5).reverse();
                 if (recentRounds.length > 0) {
                     historyMsg += `You've played ${rounds.length} total round${rounds.length > 1 ? 's' : ''}. `;
                     
-                    // Calculate averages across rounds
                     let totalScores = 0;
                     let totalHoles = 0;
-                    let totalPutts = 0;
                     
                     recentRounds.forEach(round => {
-                        const holes = round.holes || [];
                         totalScores += round.score || 0;
-                        totalHoles += holes.length;
-                        holes.forEach(h => {
-                            totalPutts += h.shots ? h.shots.filter(s => s.club === 'Putter').length : 0;
-                        });
+                        totalHoles += (round.holes || []).length;
                     });
                     
                     if (totalHoles > 0) {
                         const avgScore = (totalScores / recentRounds.length).toFixed(0);
-                        const avgPutts = (totalPutts / totalHoles).toFixed(1);
-                        historyMsg += `Last ${recentRounds.length} rounds: averaging ${avgScore} per round, ${avgPutts} putts per hole. `;
+                        historyMsg += `Averaging ${avgScore} per round. `;
                     }
                     
-                    // Last round detail
                     const last = recentRounds[0];
                     const lastDate = new Date(last.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    historyMsg += `Most recent: ${last.course}, ${lastDate}, scored ${last.score} over ${last.holes?.length || '?'} holes. `;
-                } else {
-                    historyMsg += "No completed rounds yet. ";
+                    historyMsg += `Most recent: ${last.course}, ${lastDate}, scored ${last.score}. `;
                 }
                 
-                // Current round progress
                 if (currentRound && currentRound.holes.length > 0) {
                     historyMsg += `Today at ${currentRound.course}: ${currentRound.score} through ${currentRound.holes.length} holes.`;
                 }
