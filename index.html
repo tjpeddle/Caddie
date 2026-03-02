@@ -693,13 +693,18 @@
         
         .putt-viz-container {
             width: 100%;
-            max-width: 360px;
+            max-width: 420px;
             position: relative;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-height: 80vh;
         }
         
         .putt-viz-info {
             text-align: center;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
         }
         
         .putt-viz-title {
@@ -717,16 +722,13 @@
         
         .putt-viz-svg {
             width: 100%;
+            flex: 1;
             border-radius: 20px;
-            border: 1px solid rgba(74, 222, 128, 0.2);
+            border: 1px solid rgba(74, 222, 128, 0.15);
         }
         
         .putt-viz-legend {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-top: 12px;
-            flex-wrap: wrap;
+            display: none;
         }
         
         .putt-legend-item {
@@ -836,12 +838,11 @@
         </div>
         
         <!-- Bottom Actions -->
-        <div class="bottom-actions" style="grid-template-columns: repeat(5, 1fr);">
+        <div class="bottom-actions" style="grid-template-columns: repeat(4, 1fr);">
             <button class="action-btn" id="statsBtn">📈 Stats</button>
             <button class="action-btn" id="greenReadBtn">📸 Green</button>
             <button class="action-btn" id="aerialBtn">📝 Scout</button>
             <button class="action-btn" id="practiceBtn">🎯 Putt</button>
-            <button class="action-btn" id="historyBtn">🏌️ History</button>
         </div>
         
         <!-- Hidden camera input -->
@@ -2932,7 +2933,6 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 document.getElementById('startBtn').addEventListener('click', () => this.start());
                 document.getElementById('voiceOrb').addEventListener('click', () => this.handleVoice());
                 document.getElementById('statsBtn').addEventListener('click', () => this.openStatsPanel('today'));
-                document.getElementById('historyBtn').addEventListener('click', () => this.openStatsPanel('history'));
                 document.getElementById('greenReadBtn').addEventListener('click', () => this.startGreenRead());
                 document.getElementById('aerialBtn').addEventListener('click', () => this.startAerialUpload());
                 document.getElementById('practiceBtn').addEventListener('click', () => this.togglePracticeMode());
@@ -4278,172 +4278,286 @@ End with [DATA] block:
             // ==========================================
             showPuttVisualization(feet, clockPos, breakDir, elevation, slope, aimPoint) {
                 const svg = document.getElementById('puttVizSVG');
-                const W = 360, H = 480;
-                const cx = W / 2, cy = H / 2;
+                // Full-screen feel — tall viewBox
+                const W = 400, H = 600;
+                svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
                 
-                // Green dimensions
-                const greenRx = 155, greenRy = 210;
+                const cx = W / 2;
                 
-                // Hole position — always near top-center of green
-                const holeX = cx, holeY = cy - 100;
-                const holeR = 10; // visual hole radius
+                // ==========================================
+                // CUP-CENTRIC: Hole is the star, big and prominent
+                // Matches Vector Putting diagram orientation:
+                //   - Slope falls TOWARD 6 o'clock (bottom)
+                //   - 12 = top (uphill from hole), 6 = bottom (downhill)
+                //   - 3 = right, 9 = left (golfer's perspective facing hole)
+                //   - 1,2 = upper-right, 4,5 = lower-right
+                //   - 7,8 = lower-left, 10,11 = upper-left
+                // ==========================================
                 
-                // Ball position from clock + distance
-                // Clock: 12=above hole, 6=below, 3=right, 9=left
-                // Map feet to pixels (scale: ~3px per foot, clamped)
-                const maxPixelDist = 180;
-                const pixelDist = Math.min(maxPixelDist, Math.max(40, feet * 3));
+                // Hole position — upper-center, prominent
+                const holeX = cx, holeY = 180;
+                const holeR = 22; // BIG hole visually
                 
-                // Clock to angle (12 o'clock = straight up from hole = 180° in SVG coords)
-                // From the hole's perspective looking down, clock positions radiate outward
+                // Ball distance scaling — larger distances push ball further
+                const maxPixelDist = 300;
+                const pixelDist = Math.min(maxPixelDist, Math.max(60, feet * 4.5));
+                
+                // CORRECT clock angles (golfer looking at the hole from below):
+                // 12 = directly above hole (ball below, putting uphill)
+                // 6 = directly below hole (ball above, putting downhill)  
+                // 3 = hole is to your right (ball left of hole)
+                // 9 = hole is to your left (ball right of hole)
+                // In SVG: 0° = up, angles go clockwise
+                // Ball radiates OUT from hole, so angle points FROM hole TO ball
                 const clockAngles = {
-                    12: 180, 1: 210, 2: 240, 3: 270, 4: 300, 5: 330,
-                    6: 0, 7: 30, 8: 60, 9: 90, 10: 120, 11: 150
+                    12: 180,   // ball below hole (putting up toward 12)
+                    1:  150,   // ball lower-left  
+                    2:  120,   // ball left
+                    3:  90,    // ball to the left (putting right toward 3)
+                    4:  60,    // ball upper-left
+                    5:  30,    // ball upper
+                    6:  0,     // ball above hole (putting down toward 6)
+                    7:  330,   // ball upper-right
+                    8:  300,   // ball right
+                    9:  270,   // ball to the right (putting left toward 9)
+                    10: 240,   // ball lower-right
+                    11: 210    // ball lower
                 };
                 
-                const angleDeg = clockPos !== null ? (clockAngles[clockPos] || 0) : 0;
+                // Wait — let me reconsider. The Vector Putting clock diagram:
+                // You STAND at the clock position and putt TOWARD the hole at center.
+                // So if you're at "2 o'clock", you're to the upper-right of the hole.
+                // Slope falls toward 6 o'clock.
+                // 
+                // In SVG with hole at top-center and slope falling downward:
+                // 12 = ball is BELOW hole (you putt uphill) 
+                // 6 = ball is ABOVE hole (you putt downhill) — but hole is near top, so 6 wraps
+                // 3 = ball is to the RIGHT of hole
+                // 9 = ball is to the LEFT of hole
+                // 
+                // Actually, let's orient it like the reference photo:
+                // Hole at CENTER, ball positions AROUND it, slope arrow pointing DOWN (toward 6)
+                
+                // Re-center: hole in the middle, ball around it
+                const holeCY = H / 2 - 20; // slightly above center
+                const holeXc = cx;
+                
+                // Clock to angle: standard clock. 12=top, 3=right, 6=bottom, 9=left
+                // In math: 12=90°(up), 3=0°(right), 6=270°(down), 9=180°(left)
+                // In SVG coords (y-flipped): angle from center, 0°=right, 90°=down
+                // We want: 12→up, 1→upper-right, 2→right-ish, 3→right, etc.
+                // SVG: up = -90°, right = 0°, down = 90°, left = 180°
+                const svgClockAngles = {
+                    12: -90,   // straight up
+                    1:  -60,   // upper-right
+                    2:  -30,   // right-upper
+                    3:  0,     // right
+                    4:  30,    // right-lower
+                    5:  60,    // lower-right
+                    6:  90,    // straight down
+                    7:  120,   // lower-left
+                    8:  150,   // left-lower
+                    9:  180,   // left
+                    10: 210,   // left-upper (same as -150)
+                    11: 240    // upper-left (same as -120)
+                };
+                
+                const angleDeg = clockPos !== null ? (svgClockAngles[clockPos] ?? 90) : 90;
                 const angleRad = angleDeg * Math.PI / 180;
                 
-                // Ball position (relative to hole)
-                const ballX = holeX + Math.sin(angleRad) * pixelDist;
-                const ballY = holeY - Math.cos(angleRad) * pixelDist;
+                const ballX = holeXc + Math.cos(angleRad) * pixelDist;
+                const ballY = holeCY + Math.sin(angleRad) * pixelDist;
                 
-                // Aim point offset
-                // aimPoint.inches = how far off center, aimPoint.direction = 'left' or 'right'
+                // Aim point 
                 const aimInches = aimPoint ? aimPoint.inches : 0;
                 const aimDir = aimPoint ? aimPoint.direction : '';
+                // Scale: bigger for visibility. 1 inch ≈ 2.5px
+                const aimOffsetPx = Math.min(90, aimInches * 2.5);
                 
-                // Scale aim offset to pixels (1 inch ≈ 1.5px for visual clarity)
-                const aimOffsetPx = Math.min(60, aimInches * 1.5);
-                let aimX = holeX;
-                if (aimDir === 'left') aimX = holeX - aimOffsetPx;
-                else if (aimDir === 'right') aimX = holeX + aimOffsetPx;
-                const aimY = holeY; // aim point is at hole's Y level
+                // Aim point is NEAR the hole — offset perpendicular to the putt line
+                // The aim point is where you'd "start" the ball — it's at the hole's distance
+                // but offset left or right
+                let aimX = holeXc, aimY = holeCY;
+                if (aimDir === 'left') aimX = holeXc - aimOffsetPx;
+                else if (aimDir === 'right') aimX = holeXc + aimOffsetPx;
                 
                 // Build SVG
                 let s = '';
                 
-                // Background green
                 s += `<defs>
-                    <radialGradient id="greenGrad" cx="50%" cy="45%" r="55%">
-                        <stop offset="0%" style="stop-color:#2d6b3f"/>
-                        <stop offset="70%" style="stop-color:#1a5c30"/>
-                        <stop offset="100%" style="stop-color:#134a25"/>
+                    <radialGradient id="greenGrad2" cx="50%" cy="48%" r="52%">
+                        <stop offset="0%" style="stop-color:#2a6d3c"/>
+                        <stop offset="50%" style="stop-color:#1f5c31"/>
+                        <stop offset="100%" style="stop-color:#164a26"/>
                     </radialGradient>
-                    <radialGradient id="holeGrad" cx="40%" cy="35%" r="50%">
-                        <stop offset="0%" style="stop-color:#1a1a1a"/>
+                    <radialGradient id="holeGrad2" cx="35%" cy="30%" r="55%">
+                        <stop offset="0%" style="stop-color:#222"/>
                         <stop offset="100%" style="stop-color:#000"/>
                     </radialGradient>
-                    <filter id="glow">
-                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <filter id="glow2">
+                        <feGaussianBlur stdDeviation="4" result="blur"/>
                         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                     </filter>
-                    <filter id="softGlow">
-                        <feGaussianBlur stdDeviation="6" result="blur"/>
+                    <filter id="softGlow2">
+                        <feGaussianBlur stdDeviation="5" result="blur"/>
                         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                    <filter id="shadow2">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
                     </filter>
                 </defs>`;
                 
-                // Green surface
-                s += `<ellipse cx="${cx}" cy="${cy}" rx="${greenRx}" ry="${greenRy}" fill="url(#greenGrad)" stroke="#2a8a4a" stroke-width="2"/>`;
+                // Full green background
+                s += `<rect x="0" y="0" width="${W}" height="${H}" rx="20" fill="url(#greenGrad2)"/>`;
                 
-                // Subtle mow lines
-                for (let i = -5; i <= 5; i++) {
-                    const ly = cy + i * 38;
-                    s += `<line x1="${cx - greenRx + 20}" y1="${ly}" x2="${cx + greenRx - 20}" y2="${ly}" stroke="rgba(255,255,255,0.03)" stroke-width="18"/>`;
+                // Mow stripes
+                for (let i = 0; i < 16; i++) {
+                    const ly = i * 40;
+                    const opacity = i % 2 === 0 ? 0.04 : 0;
+                    if (opacity > 0) {
+                        s += `<rect x="0" y="${ly}" width="${W}" height="40" fill="rgba(255,255,255,${opacity})"/>`;
+                    }
                 }
                 
-                // Fringe
-                s += `<ellipse cx="${cx}" cy="${cy}" rx="${greenRx}" ry="${greenRy}" fill="none" stroke="#3a7a4a" stroke-width="6" opacity="0.4"/>`;
-                
-                // Slope indicator arrow (shows general slope direction — downhill toward 6 o'clock)
+                // Slope direction arrow (right side, like the reference photo)
                 if (slope > 0) {
-                    const slopeLabel = `${slope}% slope`;
-                    // Arrow pointing downhill (toward 6 o'clock in the clock model)
-                    const arrowStartY = cy - 60;
-                    const arrowEndY = cy + 30;
-                    s += `<line x1="${cx + 60}" y1="${arrowStartY}" x2="${cx + 60}" y2="${arrowEndY}" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-dasharray="4,4"/>`;
-                    s += `<polygon points="${cx + 60},${arrowEndY + 8} ${cx + 54},${arrowEndY - 2} ${cx + 66},${arrowEndY - 2}" fill="rgba(255,255,255,0.15)"/>`;
-                    s += `<text x="${cx + 60}" y="${arrowStartY - 8}" text-anchor="middle" fill="rgba(255,255,255,0.25)" font-size="10" font-family="JetBrains Mono">${slopeLabel}</text>`;
+                    const arrowX = W - 35;
+                    const arrowTop = holeCY - 60;
+                    const arrowBot = holeCY + 60;
+                    s += `<line x1="${arrowX}" y1="${arrowTop}" x2="${arrowX}" y2="${arrowBot}" stroke="rgba(255,255,255,0.25)" stroke-width="2.5"/>`;
+                    s += `<polygon points="${arrowX},${arrowBot + 12} ${arrowX - 8},${arrowBot} ${arrowX + 8},${arrowBot}" fill="rgba(255,255,255,0.25)"/>`;
+                    s += `<text x="${arrowX}" y="${arrowTop - 10}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-weight="700" font-family="JetBrains Mono">${slope}%</text>`;
+                    // "SLOPE" label rotated
+                    s += `<text x="${arrowX + 16}" y="${holeCY}" text-anchor="middle" fill="rgba(255,255,255,0.15)" font-size="8" font-weight="700" font-family="JetBrains Mono" transform="rotate(90,${arrowX + 16},${holeCY})">SLOPE</text>`;
                 }
                 
-                // Elevation label
-                if (elevation !== 'level') {
-                    const elevLabel = elevation === 'uphill' ? '⬆ UPHILL' : '⬇ DOWNHILL';
-                    s += `<text x="${cx - 60}" y="${cy - greenRy + 30}" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="JetBrains Mono">${elevLabel}</text>`;
+                // Clock number labels (subtle, around the hole like the reference)
+                if (clockPos !== null) {
+                    const labelDist = pixelDist * 0.35; // inner ring of labels
+                    for (let c = 1; c <= 12; c++) {
+                        const cAngle = (svgClockAngles[c] ?? 0) * Math.PI / 180;
+                        const lx = holeXc + Math.cos(cAngle) * (labelDist + 30);
+                        const ly = holeCY + Math.sin(cAngle) * (labelDist + 30);
+                        const isActive = c === clockPos;
+                        const opacity = isActive ? 0.6 : 0.15;
+                        const size = isActive ? 14 : 10;
+                        const weight = isActive ? 700 : 400;
+                        s += `<text x="${lx}" y="${ly + 4}" text-anchor="middle" fill="rgba(255,255,255,${opacity})" font-size="${size}" font-weight="${weight}" font-family="JetBrains Mono">${c}</text>`;
+                    }
                 }
                 
-                // Hole
-                s += `<circle cx="${holeX}" cy="${holeY}" r="${holeR + 3}" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>`;
-                s += `<circle cx="${holeX}" cy="${holeY}" r="${holeR}" fill="url(#holeGrad)"/>`;
-                // Flag
-                s += `<line x1="${holeX}" y1="${holeY}" x2="${holeX}" y2="${holeY - 30}" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>`;
-                s += `<polygon points="${holeX},${holeY - 30} ${holeX + 14},${holeY - 24} ${holeX},${holeY - 18}" fill="#ef4444" opacity="0.8"/>`;
+                // ==========================================
+                // THE HOLE — big, prominent, with rim
+                // ==========================================
+                // Outer rim shadow
+                s += `<circle cx="${holeXc}" cy="${holeCY}" r="${holeR + 6}" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="4"/>`;
+                // White rim (cup liner)
+                s += `<circle cx="${holeXc}" cy="${holeCY}" r="${holeR + 2}" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>`;
+                // The hole itself
+                s += `<circle cx="${holeXc}" cy="${holeCY}" r="${holeR}" fill="url(#holeGrad2)"/>`;
+                // Inner shadow for depth
+                s += `<circle cx="${holeXc}" cy="${holeCY}" r="${holeR - 3}" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>`;
                 
-                // Aim point marker (small X or dot where you should start the ball)
+                // ==========================================
+                // AIM POINT — where you start the ball
+                // ==========================================
                 if (aimInches >= 2) {
-                    s += `<circle cx="${aimX}" cy="${aimY}" r="4" fill="#fbbf24" opacity="0.7" filter="url(#glow)"/>`;
-                    s += `<text x="${aimX}" y="${aimY - 10}" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="JetBrains Mono" opacity="0.8">AIM</text>`;
+                    // Aim marker — bright, clear
+                    s += `<circle cx="${aimX}" cy="${aimY}" r="6" fill="#fbbf24" opacity="0.8" filter="url(#glow2)"/>`;
+                    s += `<circle cx="${aimX}" cy="${aimY}" r="3" fill="#fff" opacity="0.9"/>`;
+                    
+                    // "AIM HERE" label
+                    const aimLabelX = aimDir === 'left' ? aimX - 15 : aimX + 15;
+                    const aimAnchor = aimDir === 'left' ? 'end' : 'start';
+                    s += `<text x="${aimLabelX}" y="${aimY - 14}" text-anchor="${aimAnchor}" fill="#fbbf24" font-size="11" font-weight="700" font-family="JetBrains Mono" filter="url(#shadow2)">AIM</text>`;
+                    
+                    // Offset measurement line (hole to aim point)
+                    s += `<line x1="${holeXc}" y1="${holeCY + holeR + 8}" x2="${aimX}" y2="${holeCY + holeR + 8}" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>`;
+                    // Ticks
+                    s += `<line x1="${holeXc}" y1="${holeCY + holeR + 4}" x2="${holeXc}" y2="${holeCY + holeR + 12}" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>`;
+                    s += `<line x1="${aimX}" y1="${holeCY + holeR + 4}" x2="${aimX}" y2="${holeCY + holeR + 12}" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>`;
+                    // Measurement label
+                    const measX = (holeXc + aimX) / 2;
+                    s += `<text x="${measX}" y="${holeCY + holeR + 24}" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="600" font-family="JetBrains Mono" opacity="0.7">${aimInches}"</text>`;
                 }
                 
-                // Aim line — straight from ball toward aim point (dashed, gold)
+                // ==========================================
+                // PUTT START LINE — straight from ball to aim point (solid, like reference)
+                // ==========================================
                 if (aimInches >= 2) {
                     // Extend aim line past the aim point
                     const dx = aimX - ballX, dy = aimY - ballY;
                     const len = Math.sqrt(dx * dx + dy * dy);
-                    const extendBy = 30;
+                    const extendBy = 40;
                     const extX = aimX + (dx / len) * extendBy;
                     const extY = aimY + (dy / len) * extendBy;
-                    s += `<line x1="${ballX}" y1="${ballY}" x2="${extX}" y2="${extY}" stroke="#fbbf24" stroke-width="2" stroke-dasharray="6,4" opacity="0.7"/>`;
+                    s += `<line x1="${ballX}" y1="${ballY}" x2="${extX}" y2="${extY}" stroke="#fbbf24" stroke-width="2.5" opacity="0.7"/>`;
+                    s += `<text x="${(ballX + extX) / 2 + 14}" y="${(ballY + extY) / 2}" text-anchor="start" fill="#fbbf24" font-size="8" font-family="JetBrains Mono" opacity="0.5">START LINE</text>`;
                 }
                 
-                // Ball path — curved from ball to hole showing the break
-                // Use a quadratic bezier: ball → (control point offset by break) → hole
+                // ==========================================
+                // TRUE ROLL — curved path ball actually takes (dashed, like reference)
+                // ==========================================
                 if (aimInches >= 2) {
-                    // Control point is offset from the midpoint between ball and hole
-                    const midX = (ballX + holeX) / 2;
-                    const midY = (ballY + holeY) / 2;
+                    const midX = (ballX + holeXc) / 2;
+                    const midY = (ballY + holeCY) / 2;
                     
-                    // Break curves away from aim direction (ball starts toward aim, curves to hole)
-                    // If aiming left, ball curves right toward hole (and vice versa)
-                    const curveMagnitude = Math.min(80, aimOffsetPx * 1.8);
+                    // The curve goes in the direction of the aim (ball starts toward aim side, 
+                    // then gravity pulls it back toward the hole)
+                    const curveMagnitude = Math.min(100, aimOffsetPx * 2.0);
                     let cpX = midX;
-                    if (aimDir === 'left') cpX = midX - curveMagnitude * 0.6;
-                    else if (aimDir === 'right') cpX = midX + curveMagnitude * 0.6;
+                    if (aimDir === 'left') cpX = midX - curveMagnitude * 0.65;
+                    else if (aimDir === 'right') cpX = midX + curveMagnitude * 0.65;
                     const cpY = midY;
                     
-                    s += `<path d="M${ballX},${ballY} Q${cpX},${cpY} ${holeX},${holeY}" fill="none" stroke="#4ade80" stroke-width="2.5" opacity="0.6" stroke-dasharray="3,3" filter="url(#softGlow)"/>`;
+                    s += `<path d="M${ballX},${ballY} Q${cpX},${cpY} ${holeXc},${holeCY}" fill="none" stroke="#4ade80" stroke-width="3" opacity="0.6" stroke-dasharray="8,5" filter="url(#softGlow2)"/>`;
                     
-                    // Small arrow at the midpoint of the curve to show direction
-                    // Calculate midpoint of quadratic bezier at t=0.5
-                    const t = 0.5;
-                    const bezMidX = (1 - t) * (1 - t) * ballX + 2 * (1 - t) * t * cpX + t * t * holeX;
-                    const bezMidY = (1 - t) * (1 - t) * ballY + 2 * (1 - t) * t * cpY + t * t * holeY;
-                    // Tangent at t=0.5
-                    const tanX = 2 * (1 - t) * (cpX - ballX) + 2 * t * (holeX - cpX);
-                    const tanY = 2 * (1 - t) * (cpY - ballY) + 2 * t * (holeY - cpY);
-                    const tanLen = Math.sqrt(tanX * tanX + tanY * tanY);
-                    if (tanLen > 0) {
-                        const nx = tanX / tanLen, ny = tanY / tanLen;
-                        const arrowSize = 6;
-                        s += `<polygon points="${bezMidX + nx * arrowSize},${bezMidY + ny * arrowSize} ${bezMidX - ny * arrowSize * 0.6 - nx * arrowSize * 0.3},${bezMidY + nx * arrowSize * 0.6 - ny * arrowSize * 0.3} ${bezMidX + ny * arrowSize * 0.6 - nx * arrowSize * 0.3},${bezMidY - nx * arrowSize * 0.6 - ny * arrowSize * 0.3}" fill="#4ade80" opacity="0.5"/>`;
+                    // Direction arrow at t=0.6
+                    const t = 0.6;
+                    const bx = (1 - t) * (1 - t) * ballX + 2 * (1 - t) * t * cpX + t * t * holeXc;
+                    const by = (1 - t) * (1 - t) * ballY + 2 * (1 - t) * t * cpY + t * t * holeCY;
+                    const tx = 2 * (1 - t) * (cpX - ballX) + 2 * t * (holeXc - cpX);
+                    const ty = 2 * (1 - t) * (cpY - ballY) + 2 * t * (holeCY - cpY);
+                    const tl = Math.sqrt(tx * tx + ty * ty);
+                    if (tl > 0) {
+                        const nx = tx / tl, ny = ty / tl;
+                        const as = 8;
+                        s += `<polygon points="${bx + nx * as},${by + ny * as} ${bx - ny * as * 0.5 - nx * as * 0.3},${by + nx * as * 0.5 - ny * as * 0.3} ${bx + ny * as * 0.5 - nx * as * 0.3},${by - nx * as * 0.5 - ny * as * 0.3}" fill="#4ade80" opacity="0.5"/>`;
                     }
                 } else {
-                    // Straight putt — just a line
-                    s += `<line x1="${ballX}" y1="${ballY}" x2="${holeX}" y2="${holeY}" stroke="#4ade80" stroke-width="2.5" opacity="0.5" stroke-dasharray="3,3" filter="url(#softGlow)"/>`;
+                    // Straight putt
+                    s += `<line x1="${ballX}" y1="${ballY}" x2="${holeXc}" y2="${holeCY}" stroke="#4ade80" stroke-width="3" opacity="0.5" stroke-dasharray="8,5" filter="url(#softGlow2)"/>`;
                 }
                 
-                // Ball
-                s += `<circle cx="${ballX}" cy="${ballY}" r="8" fill="white" filter="url(#glow)"/>`;
-                s += `<circle cx="${ballX - 2}" cy="${ballY - 2}" r="2" fill="rgba(200,200,200,0.6)"/>`;
+                // ==========================================
+                // BALL — white, prominent
+                // ==========================================
+                s += `<circle cx="${ballX}" cy="${ballY}" r="12" fill="white" filter="url(#glow2)"/>`;
+                // Dimple hint
+                s += `<circle cx="${ballX - 3}" cy="${ballY - 3}" r="2.5" fill="rgba(200,200,200,0.5)"/>`;
+                s += `<circle cx="${ballX + 2}" cy="${ballY - 1}" r="1.5" fill="rgba(200,200,200,0.3)"/>`;
                 
-                // Distance label near ball
-                s += `<text x="${ballX}" y="${ballY + 22}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11" font-weight="700" font-family="JetBrains Mono">${feet}ft</text>`;
+                // Distance + clock label below ball
+                let ballLabel = `${feet}ft`;
+                if (clockPos !== null) ballLabel += ` · ${clockPos}o'c`;
+                s += `<text x="${ballX}" y="${ballY + 28}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="13" font-weight="700" font-family="JetBrains Mono" filter="url(#shadow2)">${ballLabel}</text>`;
                 
-                // Clock position label
-                if (clockPos !== null) {
-                    s += `<text x="${ballX}" y="${ballY + 35}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="9" font-family="JetBrains Mono">${clockPos} o'clock</text>`;
+                // Elevation indicator near ball
+                if (elevation !== 'level') {
+                    const elevIcon = elevation === 'uphill' ? '↗ UPHILL' : '↘ DOWNHILL';
+                    s += `<text x="${ballX}" y="${ballY + 42}" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="9" font-weight="600" font-family="JetBrains Mono">${elevIcon}</text>`;
                 }
+                
+                // ==========================================
+                // LEGEND (bottom)
+                // ==========================================
+                const legY = H - 30;
+                s += `<line x1="40" y1="${legY}" x2="65" y2="${legY}" stroke="#fbbf24" stroke-width="2.5"/>`;
+                s += `<text x="70" y="${legY + 4}" fill="rgba(255,255,255,0.35)" font-size="9" font-family="JetBrains Mono">Start Line</text>`;
+                s += `<line x1="160" y1="${legY}" x2="185" y2="${legY}" stroke="#4ade80" stroke-width="2.5" stroke-dasharray="4,3"/>`;
+                s += `<text x="190" y="${legY + 4}" fill="rgba(255,255,255,0.35)" font-size="9" font-family="JetBrains Mono">True Roll</text>`;
+                s += `<circle cx="280" cy="${legY}" r="5" fill="#fbbf24" opacity="0.7"/>`;
+                s += `<text x="290" y="${legY + 4}" fill="rgba(255,255,255,0.35)" font-size="9" font-family="JetBrains Mono">Aim</text>`;
                 
                 svg.innerHTML = s;
                 
@@ -4459,11 +4573,11 @@ End with [DATA] block:
                 // Show overlay
                 document.getElementById('puttVizOverlay').classList.add('active');
                 
-                // Auto-dismiss after 8 seconds so it doesn't block voice flow
+                // Auto-dismiss after 10 seconds
                 if (this._puttVizTimer) clearTimeout(this._puttVizTimer);
                 this._puttVizTimer = setTimeout(() => {
                     document.getElementById('puttVizOverlay').classList.remove('active');
-                }, 8000);
+                }, 10000);
             }
             
             openStatsPanel(tab = 'today') {
@@ -4593,7 +4707,33 @@ End with [DATA] block:
                         </div>`;
                 }
                 
+                // Delete round button
+                html += `
+                    <div style="margin-top: 24px; text-align: center;">
+                        <button id="deleteRoundBtn" style="
+                            padding: 12px 28px;
+                            background: rgba(239, 68, 68, 0.12);
+                            border: 1px solid rgba(239, 68, 68, 0.3);
+                            border-radius: 12px;
+                            color: #f87171;
+                            font-size: 0.85rem;
+                            font-weight: 600;
+                            cursor: pointer;
+                            font-family: 'DM Sans', sans-serif;
+                        ">🗑 Delete This Round</button>
+                    </div>`;
+                
                 container.innerHTML = html;
+                
+                // Wire up delete button
+                document.getElementById('deleteRoundBtn').addEventListener('click', () => {
+                    if (confirm('Delete this round? This can\'t be undone.')) {
+                        this.storage.data.currentRound = null;
+                        this.storage.save();
+                        this.renderToday();
+                        this.voice.speak('Round deleted.');
+                    }
+                });
             }
             
             renderStatBar(label, value, pct, colorClass) {
@@ -4764,7 +4904,9 @@ End with [DATA] block:
                 html += `<div class="section-label">Past Rounds</div>`;
                 
                 // Render rounds newest first
-                [...rounds].reverse().forEach(round => {
+                const reversedRounds = [...rounds].reverse();
+                reversedRounds.forEach((round, displayIdx) => {
+                    const realIdx = rounds.length - 1 - displayIdx; // actual index in storage array
                     const date = new Date(round.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
                     const holes = round.holes || [];
                     const par = holes.reduce((s, h) => s + (h.par || 4), 0);
@@ -4779,9 +4921,21 @@ End with [DATA] block:
                                     <div class="round-card-course">${round.course || 'Unknown'}</div>
                                     <div class="round-card-date">${date} · ${holes.length} holes</div>
                                 </div>
-                                <div style="text-align: right;">
-                                    <div class="round-card-score">${round.score || 0}</div>
-                                    <div class="diff ${diffClass}" style="font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;">${diffStr}</div>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="text-align: right;">
+                                        <div class="round-card-score">${round.score || 0}</div>
+                                        <div class="diff ${diffClass}" style="font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;">${diffStr}</div>
+                                    </div>
+                                    <button class="delete-round-btn" data-round-idx="${realIdx}" style="
+                                        width: 30px; height: 30px;
+                                        background: rgba(239,68,68,0.1);
+                                        border: 1px solid rgba(239,68,68,0.25);
+                                        border-radius: 8px;
+                                        color: #f87171;
+                                        font-size: 0.75rem;
+                                        cursor: pointer;
+                                        flex-shrink: 0;
+                                    ">✕</button>
                                 </div>
                             </div>
                             <div class="round-mini-holes">`;
@@ -4803,6 +4957,22 @@ End with [DATA] block:
                 });
                 
                 container.innerHTML = html;
+                
+                // Wire up delete buttons for each round
+                container.querySelectorAll('.delete-round-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const idx = parseInt(btn.dataset.roundIdx);
+                        const r = this.storage.data.rounds[idx];
+                        const label = r ? `${r.course || 'Unknown'} (${r.holes?.length || 0} holes)` : 'this round';
+                        if (confirm(`Delete ${label}?`)) {
+                            this.storage.data.rounds.splice(idx, 1);
+                            this.storage.data.stats.totalRounds = this.storage.data.rounds.length;
+                            this.storage.save();
+                            this.renderHistory();
+                        }
+                    });
+                });
             }
 
             async speakStats() {
