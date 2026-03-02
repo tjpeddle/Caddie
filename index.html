@@ -314,10 +314,11 @@
         </div>
         
         <!-- Bottom Actions -->
-        <div class="bottom-actions" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="bottom-actions" style="grid-template-columns: repeat(5, 1fr);">
             <button class="action-btn" id="statsBtn">📈 Stats</button>
             <button class="action-btn" id="greenReadBtn">📸 Green</button>
             <button class="action-btn" id="aerialBtn">📝 Scout</button>
+            <button class="action-btn" id="practiceBtn">🎯 Putt</button>
             <button class="action-btn" id="historyBtn">🏌️ History</button>
         </div>
         
@@ -1051,15 +1052,53 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 return table[slopeKey][clampedDist] || 10;
             }
 
-            getAimPoint(distance, slope, stimp, breakDirection, uphillDownhill = 'level') {
+            getAimPoint(distance, slope, stimp, breakDirection, uphillDownhill = 'level', clockPosition = null) {
                 const gravityVector = this.calculateGravityVector(distance, slope, stimp);
                 
+                // CLOCK SYSTEM: Adjust break based on putt angle relative to slope
+                // 12/6 o'clock = straight up/downhill = 0% of break
+                // 3/9 o'clock = pure sidehill = 100% of break
+                // Other positions = sin(angle) percentage
+                let angleMultiplier = 1.0;
+                if (clockPosition !== null) {
+                    // Convert clock position to angle (12=0°, 3=90°, 6=180°, 9=270°)
+                    const clockAngles = {
+                        12: 0, 1: 30, 2: 60, 3: 90, 4: 120, 5: 150,
+                        6: 180, 7: 210, 8: 240, 9: 270, 10: 300, 11: 330
+                    };
+                    const angle = clockAngles[clockPosition] || 0;
+                    // Break is maximum at 90° and 270° (3 and 9 o'clock)
+                    angleMultiplier = Math.abs(Math.sin(angle * Math.PI / 180));
+                    
+                    // Determine uphill/downhill from clock if not specified
+                    if (uphillDownhill === 'level') {
+                        if (clockPosition >= 10 || clockPosition <= 2) uphillDownhill = 'downhill';
+                        else if (clockPosition >= 4 && clockPosition <= 8) uphillDownhill = 'uphill';
+                    }
+                    
+                    // Determine break direction from clock position
+                    // Slope falls toward 6 o'clock in the diagram
+                    // Putts from 1-5 break toward the low side (left)
+                    // Putts from 7-11 break toward the low side (right)
+                    if (!breakDirection || breakDirection === '') {
+                        if (clockPosition >= 1 && clockPosition <= 5) {
+                            breakDirection = 'right-to-left';
+                        } else if (clockPosition >= 7 && clockPosition <= 11) {
+                            breakDirection = 'left-to-right';
+                        } else {
+                            breakDirection = 'straight';
+                        }
+                    }
+                }
+                
+                // Apply angle multiplier to gravity vector
+                let adjustedVector = Math.round(gravityVector * angleMultiplier);
+                
                 // Adjust for uphill/downhill (elastic gravity vector)
-                let adjustedVector = gravityVector;
                 if (uphillDownhill === 'uphill') {
-                    adjustedVector = Math.round(gravityVector * 0.85); // Reduce by 15%
+                    adjustedVector = Math.round(adjustedVector * 0.85); // Less break uphill
                 } else if (uphillDownhill === 'downhill') {
-                    adjustedVector = Math.round(gravityVector * 1.15); // Increase by 15%
+                    adjustedVector = Math.round(adjustedVector * 1.15); // More break downhill
                 }
                 
                 // Build the aim instruction
@@ -1073,7 +1112,9 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 return {
                     inches: adjustedVector,
                     direction: aimDirection,
-                    description: this.buildAimDescription(adjustedVector, aimDirection, distance)
+                    description: this.buildAimDescription(adjustedVector, aimDirection, distance),
+                    clockPosition: clockPosition,
+                    angleMultiplier: angleMultiplier
                 };
             }
 
@@ -2318,6 +2359,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 document.getElementById('historyBtn').addEventListener('click', () => this.speakHistory());
                 document.getElementById('greenReadBtn').addEventListener('click', () => this.startGreenRead());
                 document.getElementById('aerialBtn').addEventListener('click', () => this.startAerialUpload());
+                document.getElementById('practiceBtn').addEventListener('click', () => this.togglePracticeMode());
                 document.getElementById('aerialInput').addEventListener('change', (e) => this.processAerialPhoto(e));
                 document.getElementById('cameraInput').addEventListener('change', (e) => this.processGreenPhoto(e));
                 
@@ -2522,7 +2564,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 const lower = text.toLowerCase();
                 
                 // Bypass wake word when waiting for specific input
-                const inInputMode = this.scoutMode;
+                const inInputMode = this.scoutMode || this.practiceMode;
                 
                 if (!inInputMode) {
                     const hasWakeWord = lower.startsWith('hey') || lower.includes('hey ') || lower.includes('jp') || lower.includes('j.p.') || lower.includes('gp') || lower.includes('caddie') || lower.includes('caddy');
@@ -2637,6 +2679,136 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 }
 
                 // ==========================================
+                // PRACTICE PUTTING MODE — live coaching
+                // ==========================================
+                if (this.practiceMode) {
+                    // Strip wake word if present
+                    text = text.replace(/^hey\b[,.]?\s*/i, '').trim();
+                    const practiceLower = text.toLowerCase();
+                    
+                    // Check if they want to end practice
+                    if (practiceLower.includes('done') || practiceLower.includes('stop') || practiceLower.includes('end practice') || practiceLower.includes('exit')) {
+                        this.endPracticeMode();
+                        return;
+                    }
+                    
+                    // Check if setting the slope: "slope is 3" / "3 percent" / "set slope 2"
+                    const slopeSet = text.match(/(?:slope|slop)\s*(?:is\s*|at\s*)?(\d+)/i) || 
+                                     text.match(/(\d+)\s*(?:percent|%)\s*(?:slope)?/i) ||
+                                     text.match(/set\s*(?:slope|slop)\s*(?:to\s*)?(\d+)/i);
+                    if (slopeSet && !text.match(/\d+\s*(?:feet|foot|ft)/i)) {
+                        const newSlope = parseInt(slopeSet[1]);
+                        if (newSlope >= 1 && newSlope <= 5) {
+                            this.practiceSlope = newSlope;
+                            await this.voice.speak(`Slope set to ${newSlope} percent. All reads will use ${newSlope}% until you change it.`);
+                            return;
+                        }
+                    }
+                    
+                    // Check if this is a result (made/missed)
+                    const resultMsg = this.processPracticeResult(text);
+                    if (resultMsg) {
+                        await this.voice.speak(resultMsg);
+                        return;
+                    }
+                    
+                    // Check if this is a new putt read request
+                    // Detect feet
+                    const practiceFeetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i) || 
+                                              text.match(/^(\d+)\s/i);
+                    
+                    if (practiceFeetMatch) {
+                        const feet = parseInt(practiceFeetMatch[1]);
+                        if (feet >= 2 && feet <= 60) {
+                            const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
+                            // Use slope from this putt if specified, otherwise use sticky slope
+                            const slope = slopeMatch ? parseInt(slopeMatch[1]) : this.practiceSlope;
+                            
+                            // Clock detection
+                            const clockMatch = text.match(/(\d{1,2})\s*o['\u2019]?\s*clock/i) || 
+                                               text.match(/at\s+(\d{1,2})\b/i);
+                            let clockPos = null;
+                            if (clockMatch) {
+                                const num = parseInt(clockMatch[1]);
+                                if (num >= 1 && num <= 12) clockPos = num;
+                            }
+                            
+                            // Break direction
+                            let breakDir = '';
+                            if (practiceLower.includes('left to right') || practiceLower.includes('left-to-right')) {
+                                breakDir = 'left-to-right';
+                            } else if (practiceLower.includes('right to left') || practiceLower.includes('right-to-left')) {
+                                breakDir = 'right-to-left';
+                            } else if (practiceLower.includes('breaks left') || practiceLower.includes('break left')) {
+                                breakDir = 'right-to-left';
+                            } else if (practiceLower.includes('breaks right') || practiceLower.includes('break right')) {
+                                breakDir = 'left-to-right';
+                            } else if (practiceLower.includes('straight')) {
+                                breakDir = 'straight';
+                            }
+                            
+                            // Elevation
+                            let elevation = 'level';
+                            if (practiceLower.includes('uphill') || practiceLower.includes('below')) elevation = 'uphill';
+                            if (practiceLower.includes('downhill') || practiceLower.includes('above')) elevation = 'downhill';
+                            
+                            const stimp = this.storage.data.profile.stimp || 9;
+                            
+                            // Save the read for when they report the result
+                            this.lastPracticeRead = {
+                                feet: feet,
+                                clock: clockPos,
+                                breakDir: breakDir,
+                                slope: slope,
+                                elevation: elevation
+                            };
+                            
+                            // Give the read
+                            if (clockPos !== null) {
+                                const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation, clockPos);
+                                if (aimPoint.inches < 2 || clockPos === 12 || clockPos === 6) {
+                                    let advice = `${feet} feet, ${clockPos} o'clock. Straight. `;
+                                    if (clockPos >= 10 || clockPos <= 2) advice += 'Downhill, soft touch.';
+                                    else if (clockPos >= 4 && clockPos <= 8) advice += 'Uphill, firm.';
+                                    else advice += 'Center cup.';
+                                    await this.voice.speak(advice);
+                                } else {
+                                    await this.voice.speak(`${feet} feet, ${clockPos} o'clock. ${aimPoint.description}.`);
+                                }
+                            } else if (breakDir === 'straight') {
+                                let advice = `${feet} feet, straight. `;
+                                if (elevation === 'uphill') advice += 'Uphill, firm.';
+                                else if (elevation === 'downhill') advice += 'Downhill, soft.';
+                                else advice += 'Center cup.';
+                                await this.voice.speak(advice);
+                            } else if (breakDir) {
+                                const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation);
+                                await this.voice.speak(`${aimPoint.description}.`);
+                            } else {
+                                await this.voice.speak(`${feet} feet. Which way does it break? Or give me a clock.`);
+                                this.lastPracticeRead = null; // Can't score without a read
+                            }
+                            return;
+                        }
+                    }
+                    
+                    // Check for practice stats request
+                    if (practiceLower.includes('stats') || practiceLower.includes('how am i doing') || practiceLower.includes('score')) {
+                        const total = this.practiceSession.totalMade + this.practiceSession.totalMissed;
+                        if (total > 0) {
+                            const pct = Math.round((this.practiceSession.totalMade / total) * 100);
+                            await this.voice.speak(`${this.practiceSession.totalMade} for ${total}, ${pct} percent this session.`);
+                        } else {
+                            await this.voice.speak("No putts yet. Give me a read.");
+                        }
+                        return;
+                    }
+                    
+                    await this.voice.speak("Give me a putt. Like 15 feet 2 o'clock. Or say done to end practice.");
+                    return;
+                }
+
+                // ==========================================
                 // DETECT & STORE: Club distances said naturally
                 // Catches many patterns: "my driver goes 280", "7 iron 155", 
                 // "hybrid is about 175", "driver 260", "my 9 iron goes 130"
@@ -2696,53 +2868,85 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 // Catches natural speech: "15 feet right to left", 
                 // "I'm 15 feet below the hole left to right",
                 // "20 footer breaks left", "10 feet 2% downhill"
+                // CLOCK SYSTEM: "15 feet 2 o'clock" / "20 feet at 8"
                 // ==========================================
                 const feetMatch = text.match(/(\d+)\s*(?:feet|foot|ft|footer)/i) || 
                                   text.match(/(\d+)\s*(?:below|above|from)/i);
                 const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
                 const hasBreak = lowerCmd.includes('left') || lowerCmd.includes('right') || lowerCmd.includes('straight');
                 
-                if (feetMatch && (slopeMatch || hasBreak)) {
+                // Clock position detection: "2 o'clock" / "at 8" / "10 o'clock"
+                const clockMatch = text.match(/(\d{1,2})\s*o['\u2019]?\s*clock/i) || 
+                                   text.match(/at\s+(\d{1,2})\b/i);
+                let clockPos = null;
+                if (clockMatch) {
+                    const num = parseInt(clockMatch[1]);
+                    if (num >= 1 && num <= 12) clockPos = num;
+                }
+                
+                if (feetMatch && (slopeMatch || hasBreak || clockPos !== null)) {
                     const feet = parseInt(feetMatch[1]);
                     const slope = slopeMatch ? parseInt(slopeMatch[1]) : 2; // default 2%
                     
-                    // Detect break direction
+                    // Detect break direction (clock overrides if provided)
                     let breakDir = '';
-                    if (lowerCmd.includes('left to right') || lowerCmd.includes('left-to-right')) {
+                    if (clockPos !== null) {
+                        // Clock system determines break direction automatically
+                        // No need to specify left/right
+                        breakDir = ''; // getAimPoint will figure it out from clock
+                    } else if (lowerCmd.includes('left to right') || lowerCmd.includes('left-to-right')) {
                         breakDir = 'left-to-right';
                     } else if (lowerCmd.includes('right to left') || lowerCmd.includes('right-to-left')) {
                         breakDir = 'right-to-left';
                     } else if (lowerCmd.includes('breaks left') || lowerCmd.includes('break left')) {
-                        breakDir = 'right-to-left'; // ball breaks left = aim right
+                        breakDir = 'right-to-left';
                     } else if (lowerCmd.includes('breaks right') || lowerCmd.includes('break right')) {
-                        breakDir = 'left-to-right'; // ball breaks right = aim left
+                        breakDir = 'left-to-right';
                     } else if (lowerCmd.includes('straight')) {
                         breakDir = 'straight';
                     }
                     
-                    // Detect uphill/downhill
+                    // Detect uphill/downhill (clock overrides if provided)
                     let elevation = 'level';
-                    if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill') || lowerCmd.includes('below')) elevation = 'uphill';
-                    if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill') || lowerCmd.includes('above')) elevation = 'downhill';
+                    if (clockPos === null) {
+                        if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill') || lowerCmd.includes('below')) elevation = 'uphill';
+                        if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill') || lowerCmd.includes('above')) elevation = 'downhill';
+                    }
                     
-                    // Get stimp from storage or default
                     const stimp = this.storage.data.profile.stimp || 9;
                     
-                    if (breakDir === 'straight') {
-                        // Straight putt
+                    if (clockPos !== null) {
+                        // CLOCK SYSTEM — angle-adjusted break
+                        const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation, clockPos);
+                        
+                        if (aimPoint.inches < 2 || clockPos === 12 || clockPos === 6) {
+                            let advice = `${feet} feet, ${clockPos} o'clock. Straight putt. `;
+                            if (clockPos >= 10 || clockPos <= 2) advice += 'Downhill, soft touch.';
+                            else if (clockPos >= 4 && clockPos <= 8) advice += 'Uphill, hit it firm.';
+                            else advice += 'Center of the cup.';
+                            await this.voice.speak(advice);
+                        } else {
+                            let advice = `${feet} feet, ${clockPos} o'clock. ${aimPoint.description}.`;
+                            if (clockPos >= 10 || clockPos <= 2) advice += ' Downhill, soft touch.';
+                            else if (clockPos >= 4 && clockPos <= 8) advice += ' Uphill, firm stroke.';
+                            await this.voice.speak(advice);
+                        }
+                    } else if (breakDir === 'straight') {
                         let advice = `${feet} feet, straight. `;
-                        if (elevation === 'uphill') advice += `Uphill — hit it firm, 18 inches past.`;
-                        else if (elevation === 'downhill') advice += `Downhill — soft touch, let gravity work.`;
+                        if (elevation === 'uphill') advice += `Uphill, hit it firm, 18 inches past.`;
+                        else if (elevation === 'downhill') advice += `Downhill, soft touch, let gravity work.`;
                         else advice += `Center of the cup. Die it 12 inches past.`;
                         
                         await this.voice.speak(advice);
                     } else if (breakDir) {
-                        // Calculate aim point using Vector Putting
                         const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation);
-                        await this.voice.speak(`${aimPoint.description}. Die it 12 past.`);
+                        let advice = `${aimPoint.description}.`;
+                        if (elevation === 'uphill') advice += ' Uphill, firm, 18 past.';
+                        else if (elevation === 'downhill') advice += ' Downhill, easy does it.';
+                        else advice += ' Die it 12 past.';
+                        await this.voice.speak(advice);
                     } else {
-                        // Have feet but no break — ask for it quickly
-                        await this.voice.speak(`${feet} feet, ${slope} percent. Which way does it break?`);
+                        await this.voice.speak(`${feet} feet, ${slope} percent. Which way does it break? Or give me a clock position.`);
                     }
                     
                     // Track the putt in conversation history for Claude
@@ -3179,6 +3383,244 @@ End with [DATA] block:
                     await this.voice.speak(`Done. Learned hole ${holeNum} for ${courseName}. That knowledge is saved.`);
                 } else {
                     await this.voice.speak(`Hole ${holeNum} saved. Tap aerial again for the next hole.`);
+                }
+            }
+            
+            // ==========================================
+            // PRACTICE PUTTING MODE — live coach on the practice green
+            // ==========================================
+            togglePracticeMode() {
+                if (this.practiceMode) {
+                    this.endPracticeMode();
+                } else {
+                    this.startPracticeMode();
+                }
+            }
+            
+            startPracticeMode() {
+                this.practiceMode = true;
+                this.practiceSlope = 2; // Default 2%, sticky until changed
+                this.practiceSession = {
+                    startTime: Date.now(),
+                    putts: [],        // { feet, clock, breakDir, slope, made, missedSide }
+                    totalMade: 0,
+                    totalMissed: 0
+                };
+                
+                // Initialize practice stats in storage if needed
+                if (!this.storage.data.practiceStats) {
+                    this.storage.data.practiceStats = {
+                        sessions: [],
+                        tendencies: {
+                            missLeft: 0,
+                            missRight: 0,
+                            missShort: 0,
+                            missLong: 0,
+                            totalPutts: 0,
+                            totalMade: 0
+                        },
+                        byDistance: {},    // { '5': {made: X, total: Y}, '10': {...} }
+                        byClock: {}        // { '1': {made: X, total: Y}, '2': {...} }
+                    };
+                }
+                
+                // Style the button to show active
+                document.getElementById('practiceBtn').style.background = 'rgba(74, 222, 128, 0.4)';
+                document.getElementById('practiceBtn').textContent = '🎯 END';
+                
+                this.voice.speak("Practice mode. Set your slope first, like: slope 3 percent. Then give me putts. Like: 15 feet 2 o'clock. After you putt, say made it or missed left, right, short, or long.");
+            }
+            
+            endPracticeMode() {
+                if (!this.practiceMode) return;
+                
+                const session = this.practiceSession;
+                const total = session.totalMade + session.totalMissed;
+                
+                if (total > 0) {
+                    const pct = Math.round((session.totalMade / total) * 100);
+                    
+                    // Save session to history
+                    this.storage.data.practiceStats.sessions.push({
+                        date: new Date().toISOString(),
+                        duration: Math.round((Date.now() - session.startTime) / 60000),
+                        putts: total,
+                        made: session.totalMade,
+                        percentage: pct
+                    });
+                    this.storage.save();
+                    
+                    // Build summary
+                    let summary = `Practice done. ${session.totalMade} for ${total}, ${pct} percent. `;
+                    
+                    // Tendency analysis
+                    const tendencies = this.storage.data.practiceStats.tendencies;
+                    if (tendencies.totalPutts >= 10) {
+                        const missTotal = tendencies.missLeft + tendencies.missRight + tendencies.missShort + tendencies.missLong;
+                        if (missTotal > 0) {
+                            const leftPct = Math.round(tendencies.missLeft / missTotal * 100);
+                            const rightPct = Math.round(tendencies.missRight / missTotal * 100);
+                            const shortPct = Math.round(tendencies.missShort / missTotal * 100);
+                            const longPct = Math.round(tendencies.missLong / missTotal * 100);
+                            
+                            // Find biggest tendency
+                            const max = Math.max(leftPct, rightPct, shortPct, longPct);
+                            if (max >= 35) {
+                                if (leftPct === max) summary += `You tend to miss left ${leftPct}% of the time. Try adding a couple inches to the right. `;
+                                else if (rightPct === max) summary += `You tend to miss right ${rightPct}% of the time. You might be underreading break. `;
+                                else if (shortPct === max) summary += `You leave them short ${shortPct}% of the time. Be more aggressive. Every putt should pass the hole. `;
+                                else if (longPct === max) summary += `You're running them past ${longPct}% of the time. Soften the stroke. `;
+                            }
+                        }
+                    }
+                    
+                    // Distance analysis
+                    const byDist = this.storage.data.practiceStats.byDistance;
+                    let worstDist = null, worstPct = 100;
+                    for (const [dist, stats] of Object.entries(byDist)) {
+                        if (stats.total >= 3) {
+                            const p = Math.round(stats.made / stats.total * 100);
+                            if (p < worstPct) { worstPct = p; worstDist = dist; }
+                        }
+                    }
+                    if (worstDist && worstPct < 50) {
+                        summary += `Your weak spot is ${worstDist} feet, only ${worstPct}% make rate. Work on that distance.`;
+                    }
+                    
+                    this.voice.speak(summary);
+                } else {
+                    this.voice.speak("Practice mode off.");
+                }
+                
+                this.practiceMode = false;
+                this.practiceSession = null;
+                this.lastPracticeRead = null;
+                
+                document.getElementById('practiceBtn').style.background = '';
+                document.getElementById('practiceBtn').textContent = '🎯 Putt';
+            }
+            
+            processPracticeResult(text) {
+                const lower = text.toLowerCase();
+                
+                if (!this.lastPracticeRead) {
+                    return false; // No pending putt to score
+                }
+                
+                const putt = this.lastPracticeRead;
+                let made = false;
+                let missedSide = null;
+                
+                if (lower.includes('made') || lower.includes('make') || lower.includes('drained') || 
+                    lower.includes('sank') || lower.includes('in the hole') || lower.includes('yes')) {
+                    made = true;
+                } else if (lower.includes('miss')) {
+                    if (lower.includes('left')) missedSide = 'left';
+                    else if (lower.includes('right')) missedSide = 'right';
+                    else if (lower.includes('short')) missedSide = 'short';
+                    else if (lower.includes('long') || lower.includes('past')) missedSide = 'long';
+                    else missedSide = 'unknown';
+                } else if (lower.includes('short')) {
+                    missedSide = 'short';
+                } else if (lower.includes('long') || lower.includes('past') || lower.includes('by')) {
+                    missedSide = 'long';
+                } else if (lower.includes('left')) {
+                    missedSide = 'left';
+                } else if (lower.includes('right')) {
+                    missedSide = 'right';
+                } else if (lower.includes('no') || lower.includes('nope')) {
+                    missedSide = 'unknown';
+                } else {
+                    return false; // Didn't understand — not a result
+                }
+                
+                // Record the result
+                const result = {
+                    feet: putt.feet,
+                    clock: putt.clock,
+                    breakDir: putt.breakDir,
+                    made: made,
+                    missedSide: missedSide
+                };
+                
+                this.practiceSession.putts.push(result);
+                
+                // Update session totals
+                if (made) {
+                    this.practiceSession.totalMade++;
+                } else {
+                    this.practiceSession.totalMissed++;
+                }
+                
+                // Update lifetime tendencies
+                const tend = this.storage.data.practiceStats.tendencies;
+                tend.totalPutts++;
+                if (made) {
+                    tend.totalMade++;
+                } else {
+                    if (missedSide === 'left') tend.missLeft++;
+                    else if (missedSide === 'right') tend.missRight++;
+                    else if (missedSide === 'short') tend.missShort++;
+                    else if (missedSide === 'long') tend.missLong++;
+                }
+                
+                // Update by-distance stats
+                const distKey = String(Math.round(putt.feet / 5) * 5); // round to nearest 5
+                if (!this.storage.data.practiceStats.byDistance[distKey]) {
+                    this.storage.data.practiceStats.byDistance[distKey] = { made: 0, total: 0 };
+                }
+                this.storage.data.practiceStats.byDistance[distKey].total++;
+                if (made) this.storage.data.practiceStats.byDistance[distKey].made++;
+                
+                // Update by-clock stats
+                if (putt.clock) {
+                    const clockKey = String(putt.clock);
+                    if (!this.storage.data.practiceStats.byClock[clockKey]) {
+                        this.storage.data.practiceStats.byClock[clockKey] = { made: 0, total: 0 };
+                    }
+                    this.storage.data.practiceStats.byClock[clockKey].total++;
+                    if (made) this.storage.data.practiceStats.byClock[clockKey].made++;
+                }
+                
+                this.storage.save();
+                this.lastPracticeRead = null;
+                
+                // Build response
+                const total = this.practiceSession.totalMade + this.practiceSession.totalMissed;
+                const pct = Math.round((this.practiceSession.totalMade / total) * 100);
+                
+                if (made) {
+                    const phrases = ['Nice.', 'Money.', 'Good roll.', 'That\'s it.', 'Pure.', 'Drilled it.'];
+                    const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+                    return `${phrase} ${this.practiceSession.totalMade} for ${total}. Next putt.`;
+                } else {
+                    let feedback = '';
+                    
+                    // Give specific feedback based on miss
+                    if (missedSide === 'left') {
+                        feedback = 'Missed left. ';
+                        if (putt.breakDir === 'right-to-left' || (putt.clock && putt.clock >= 7 && putt.clock <= 11)) {
+                            feedback += 'You overread the break. Aim a little less left next time.';
+                        } else {
+                            feedback += 'Try starting it a touch more right.';
+                        }
+                    } else if (missedSide === 'right') {
+                        feedback = 'Missed right. ';
+                        if (putt.breakDir === 'left-to-right' || (putt.clock && putt.clock >= 1 && putt.clock <= 5)) {
+                            feedback += 'You overread the break. Aim a little less right next time.';
+                        } else {
+                            feedback += 'You underread it. More break than you think.';
+                        }
+                    } else if (missedSide === 'short') {
+                        feedback = 'Short. Hit it past the hole. Can\'t make it if you don\'t get there.';
+                    } else if (missedSide === 'long') {
+                        feedback = 'Too much juice. Soften the stroke.';
+                    } else {
+                        feedback = 'Missed. ';
+                    }
+                    
+                    feedback += ` ${this.practiceSession.totalMade} for ${total}. Next putt.`;
+                    return feedback;
                 }
             }
             
