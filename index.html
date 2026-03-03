@@ -3265,11 +3265,25 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                                      text.match(/(\d+)\s*(?:percent|%|per\s*cent)/i) ||
                                      text.match(/set\s*(?:slope|slop)\s*(?:to\s*)?(\d+)/i) ||
                                      text.match(/(?:make it|change to|use)\s*(\d+)/i);
-                    if (slopeSet && !text.match(/\d+\s*(?:feet|foot|ft)/i)) {
+                    if (slopeSet && !text.match(/\d+\s*(?:feet|foot|ft)/i) && !text.match(/stimp/i)) {
                         const newSlope = parseInt(slopeSet[1]);
                         if (newSlope >= 1 && newSlope <= 5) {
                             this.practiceSlope = newSlope;
                             await this.voice.speak(`Slope ${newSlope} percent.`);
+                            return;
+                        }
+                    }
+                    
+                    // Check if setting stimp: "stimp 10" / "stimp is 9" / "green speed 11"
+                    const stimpSet = practiceLower.match(/stimp\s*(?:is\s*|at\s*|of\s*|to\s*)?(\d+(?:\.\d+)?)/i) ||
+                                     practiceLower.match(/greens?\s+(?:are\s+|at\s+|speed\s+)?(\d+(?:\.\d+)?)/i) ||
+                                     practiceLower.match(/speed\s+(?:is\s+|at\s+)?(\d+(?:\.\d+)?)/i);
+                    if (stimpSet && !text.match(/\d+\s*(?:feet|foot|ft)/i)) {
+                        const newStimp = parseFloat(stimpSet[1]);
+                        if (newStimp >= 6 && newStimp <= 14) {
+                            this.storage.data.profile.stimp = newStimp;
+                            this.storage.save();
+                            await this.voice.speak(`Stimp ${newStimp}.`);
                             return;
                         }
                     }
@@ -3553,7 +3567,7 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     if (stimp >= 6 && stimp <= 14) {
                         this.storage.data.profile.stimp = stimp;
                         this.storage.save();
-                        await this.voice.speak(`Got it, stimp ${stimp}. I'll factor that into all your reads.`);
+                        await this.voice.speak(`Stimp ${stimp}.`);
                         return;
                     }
                 }
@@ -4015,7 +4029,8 @@ End with [DATA] block:
                 document.getElementById('practiceBtn').style.background = 'rgba(74, 222, 128, 0.4)';
                 document.getElementById('practiceBtn').textContent = '🎯 END';
                 
-                this.voice.speak("Practice mode. What's the slope?");
+                const currentStimp = this.storage.data.profile.stimp || 9;
+                this.voice.speak(`Practice mode. Stimp ${currentStimp}. What's the slope?`);
             }
             
             endPracticeMode() {
@@ -4292,8 +4307,10 @@ End with [DATA] block:
                 const holeX = 0, holeY = 0; // hole at origin
                 const holeR = 30; // LARGE hole
                 
-                // Ball distance in pixels — scale generously so they look properly separated
-                const pixelDist = Math.max(140, Math.min(350, feet * 8));
+                // Ball distance in pixels — must visually differentiate 3ft vs 15ft vs 30ft
+                // Scale: ~20px per foot, so 5ft=100, 10ft=200, 15ft=300, 30ft=500
+                // Min 60px (very short putts still visible), max 600px
+                const pixelDist = Math.max(60, Math.min(600, feet * 20));
                 
                 // Clock angles: standard clock, 12=top, 3=right, 6=bottom, 9=left
                 // SVG: 0°=right, 90°=down, so 12 o'clock = -90°
@@ -4307,7 +4324,7 @@ End with [DATA] block:
                 
                 const ballX = holeX + Math.cos(angleRad) * pixelDist;
                 const ballY = holeY + Math.sin(angleRad) * pixelDist;
-                const ballR = 16; // BIG ball
+                const ballR = 12; // Real scale: ball 1.68" vs cup 4.25" // BIG ball
                 
                 // Aim offset
                 const aimInches = aimPoint ? aimPoint.inches : 0;
