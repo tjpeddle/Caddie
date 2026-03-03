@@ -3260,15 +3260,16 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                         return;
                     }
                     
-                    // Check if setting the slope: "slope is 3" / "3 percent" / "set slope 2"
-                    const slopeSet = text.match(/(?:slope|slop)\s*(?:is\s*|at\s*)?(\d+)/i) || 
-                                     text.match(/(\d+)\s*(?:percent|%)\s*(?:slope)?/i) ||
-                                     text.match(/set\s*(?:slope|slop)\s*(?:to\s*)?(\d+)/i);
+                    // Check if setting the slope: "slope is 3" / "3 percent" / "set slope 2" / just "3 percent slope"
+                    const slopeSet = text.match(/(?:slope|slop)\s*(?:is\s*|at\s*|=\s*)?(\d+)/i) || 
+                                     text.match(/(\d+)\s*(?:percent|%|per\s*cent)/i) ||
+                                     text.match(/set\s*(?:slope|slop)\s*(?:to\s*)?(\d+)/i) ||
+                                     text.match(/(?:make it|change to|use)\s*(\d+)/i);
                     if (slopeSet && !text.match(/\d+\s*(?:feet|foot|ft)/i)) {
                         const newSlope = parseInt(slopeSet[1]);
                         if (newSlope >= 1 && newSlope <= 5) {
                             this.practiceSlope = newSlope;
-                            await this.voice.speak(`${newSlope} percent. Got it.`);
+                            await this.voice.speak(`Slope ${newSlope} percent.`);
                             return;
                         }
                     }
@@ -3291,9 +3292,20 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     if (practiceFeetMatch) {
                         const feet = parseInt(practiceFeetMatch[1]);
                         if (feet >= 2 && feet <= 60) {
-                            const slopeMatch = text.match(/(\d+)\s*(?:percent|%)/i);
-                            // Use slope from this putt if specified, otherwise use sticky slope
+                            const slopeMatch = text.match(/(\d+)\s*(?:percent|%|per\s*cent)/i);
                             const slope = slopeMatch ? parseInt(slopeMatch[1]) : this.practiceSlope;
+                            
+                            // If slope was provided inline, save it as sticky
+                            if (slopeMatch && parseInt(slopeMatch[1]) >= 1 && parseInt(slopeMatch[1]) <= 5) {
+                                this.practiceSlope = parseInt(slopeMatch[1]);
+                            }
+                            
+                            // If no slope set yet, ask for it
+                            if (!slope) {
+                                await this.voice.speak(`${feet} feet. What's the slope?`);
+                                this.lastPracticeRead = null;
+                                return;
+                            }
                             
                             // Clock detection
                             const clockMatch = text.match(/(\d{1,2})\s*o['\u2019]?\s*clock/i) || 
@@ -3974,7 +3986,7 @@ End with [DATA] block:
             
             startPracticeMode() {
                 this.practiceMode = true;
-                this.practiceSlope = 2; // Default 2%, sticky until changed
+                this.practiceSlope = null; // No default — player sets it
                 this.practiceSession = {
                     startTime: Date.now(),
                     putts: [],        // { feet, clock, breakDir, slope, made, missedSide }
@@ -4003,7 +4015,7 @@ End with [DATA] block:
                 document.getElementById('practiceBtn').style.background = 'rgba(74, 222, 128, 0.4)';
                 document.getElementById('practiceBtn').textContent = '🎯 END';
                 
-                this.voice.speak("Practice mode. Give me a distance and clock. Like: 15 feet, 2 o'clock.");
+                this.voice.speak("Practice mode. What's the slope?");
             }
             
             endPracticeMode() {
@@ -4302,16 +4314,35 @@ End with [DATA] block:
                 const aimInches = aimPoint ? aimPoint.inches : 0;
                 const aimDir = aimPoint ? aimPoint.direction : '';
                 const aimOffsetPx = Math.min(100, aimInches * 3.5);
+                
+                // The AIM POINT is where you aim your putter — it's offset from the hole
+                // It sits at the same distance from the ball as the hole, but displaced left/right
+                // For the visual: place it next to the hole, offset perpendicular to the ball-hole line
+                
+                // Direction vector from ball to hole
+                const bhDx = holeX - ballX;
+                const bhDy = holeY - ballY;
+                const bhLen = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
+                // Perpendicular vector (rotated 90°)
+                const perpX = -bhDy / bhLen;
+                const perpY = bhDx / bhLen;
+                
+                // Aim point: hole position offset perpendicular by aimOffsetPx
                 let aimX = holeX, aimY = holeY;
-                if (aimDir === 'left') aimX = holeX - aimOffsetPx;
-                else if (aimDir === 'right') aimX = holeX + aimOffsetPx;
+                if (aimDir === 'left') {
+                    aimX = holeX + perpX * aimOffsetPx;
+                    aimY = holeY + perpY * aimOffsetPx;
+                } else if (aimDir === 'right') {
+                    aimX = holeX - perpX * aimOffsetPx;
+                    aimY = holeY - perpY * aimOffsetPx;
+                }
                 
                 // ==========================================
                 // COMPUTE TIGHT VIEWBOX around hole + ball + aim + padding
                 // ==========================================
                 const allX = [holeX, ballX, aimX];
                 const allY = [holeY, ballY, aimY];
-                const pad = 80; // padding around extremes
+                const pad = 55; // tight padding
                 const minX = Math.min(...allX) - pad;
                 const maxX = Math.max(...allX) + pad;
                 const minY = Math.min(...allY) - pad;
@@ -4393,26 +4424,32 @@ End with [DATA] block:
                 if (aimInches >= 2) {
                     s += `<circle cx="${aimX}" cy="${aimY}" r="8" fill="#fbbf24" opacity="0.8" filter="url(#gl)"/>`;
                     s += `<circle cx="${aimX}" cy="${aimY}" r="4" fill="#fff" opacity="0.9"/>`;
-                    // AIM label
-                    const aimLabelX = aimDir === 'left' ? aimX - 16 : aimX + 16;
-                    const aimAnchor = aimDir === 'left' ? 'end' : 'start';
-                    s += `<text x="${aimLabelX}" y="${aimY - 14}" text-anchor="${aimAnchor}" fill="#fbbf24" font-size="14" font-weight="700" font-family="JetBrains Mono">AIM</text>`;
+                    // AIM label — place away from the hole
+                    const labelOffX = (aimX - holeX);
+                    const labelOffY = (aimY - holeY);
+                    const labelLen = Math.sqrt(labelOffX * labelOffX + labelOffY * labelOffY) || 1;
+                    const aimLabelX = aimX + (labelOffX / labelLen) * 20;
+                    const aimLabelY = aimY + (labelOffY / labelLen) * 20 - 6;
+                    s += `<text x="${aimLabelX}" y="${aimLabelY}" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700" font-family="JetBrains Mono">AIM</text>`;
                     
-                    // Measurement line
-                    const measY = holeY + holeR + 14;
-                    s += `<line x1="${holeX}" y1="${measY}" x2="${aimX}" y2="${measY}" stroke="#fbbf24" stroke-width="1.5" opacity="0.6"/>`;
-                    s += `<line x1="${holeX}" y1="${measY - 5}" x2="${holeX}" y2="${measY + 5}" stroke="#fbbf24" stroke-width="1" opacity="0.6"/>`;
-                    s += `<line x1="${aimX}" y1="${measY - 5}" x2="${aimX}" y2="${measY + 5}" stroke="#fbbf24" stroke-width="1" opacity="0.6"/>`;
-                    s += `<text x="${(holeX + aimX) / 2}" y="${measY + 18}" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="JetBrains Mono" opacity="0.8">${aimInches}"</text>`;
+                    // Measurement line from hole center to aim point
+                    s += `<line x1="${holeX}" y1="${holeY}" x2="${aimX}" y2="${aimY}" stroke="#fbbf24" stroke-width="1.5" opacity="0.4" stroke-dasharray="3,3"/>`;
+                    // Inch label at midpoint
+                    const measMidX = (holeX + aimX) / 2;
+                    const measMidY = (holeY + aimY) / 2;
+                    s += `<text x="${measMidX}" y="${measMidY + 18}" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="JetBrains Mono" opacity="0.8">${aimInches}"</text>`;
                 }
                 
                 // ==========================================
                 // START LINE (solid gold — where you aim putter)
+                // This line goes from ball THROUGH the aim point and PAST it
+                // It clearly misses the hole — that's the whole point
                 // ==========================================
                 if (aimInches >= 2) {
                     const dx = aimX - ballX, dy = aimY - ballY;
                     const len = Math.sqrt(dx * dx + dy * dy);
-                    const ext = 35;
+                    // Extend well past the aim point so it's obvious the line misses the hole
+                    const ext = 60;
                     const extX = aimX + (dx / len) * ext;
                     const extY = aimY + (dy / len) * ext;
                     s += `<line x1="${ballX}" y1="${ballY}" x2="${extX}" y2="${extY}" stroke="#fbbf24" stroke-width="3" opacity="0.75"/>`;
@@ -4420,17 +4457,28 @@ End with [DATA] block:
                 
                 // ==========================================
                 // TRUE ROLL (dashed green curve — actual ball path)
+                // Ball starts rolling on the start line, then gravity
+                // pulls it sideways into the hole
                 // ==========================================
                 if (aimInches >= 2) {
-                    const midX = (ballX + holeX) / 2;
-                    const midY = (ballY + holeY) / 2;
-                    const curveMag = Math.min(120, aimOffsetPx * 2.0);
-                    let cpX = midX;
-                    if (aimDir === 'left') cpX = midX - curveMag * 0.65;
-                    else if (aimDir === 'right') cpX = midX + curveMag * 0.65;
+                    // The ball path is a curve from ball to hole
+                    // The control point should be offset toward the aim side
+                    // so the curve starts heading toward aim, then bends to hole
                     
-                    s += `<path d="M${ballX},${ballY} Q${cpX},${midY} ${holeX},${holeY}" fill="none" stroke="#4ade80" stroke-width="3.5" opacity="0.55" stroke-dasharray="10,6" filter="url(#sg)"/>`;
+                    // Point along the start line at ~40% of the way (where ball is still rolling straight)
+                    const startLineDx = aimX - ballX;
+                    const startLineDy = aimY - ballY;
+                    const startLineLen = Math.sqrt(startLineDx * startLineDx + startLineDy * startLineDy);
+                    
+                    // Control point: follow the start line direction for part of the distance
+                    // then let gravity pull it. Place CP at ~40% along start line direction
+                    const cpT = 0.45;
+                    const cpX = ballX + startLineDx * cpT + (aimX - holeX) * 0.3;
+                    const cpY = ballY + startLineDy * cpT + (aimY - holeY) * 0.3;
+                    
+                    s += `<path d="M${ballX},${ballY} Q${cpX},${cpY} ${holeX},${holeY}" fill="none" stroke="#4ade80" stroke-width="3.5" opacity="0.55" stroke-dasharray="10,6" filter="url(#sg)"/>`;
                 } else {
+                    // Straight putt — line from ball to hole
                     s += `<line x1="${ballX}" y1="${ballY}" x2="${holeX}" y2="${holeY}" stroke="#4ade80" stroke-width="3.5" opacity="0.5" stroke-dasharray="10,6" filter="url(#sg)"/>`;
                 }
                 
@@ -4466,6 +4514,7 @@ End with [DATA] block:
                 // Update text labels
                 let titleText = `${feet}ft`;
                 if (clockPos !== null) titleText += ` · ${clockPos} o'clock`;
+                titleText += ` · ${slope}%`;
                 if (elevation !== 'level') titleText += ` · ${elevation}`;
                 document.getElementById('puttVizTitle').textContent = titleText;
                 
