@@ -4360,10 +4360,10 @@ End with [DATA] block:
                 const holeX = 0, holeY = 0; // hole at origin
                 const holeR = 30; // LARGE hole
                 
-                // Ball distance in pixels — must visually differentiate 3ft vs 15ft vs 30ft
-                // Scale: ~20px per foot, so 5ft=100, 10ft=200, 15ft=300, 30ft=500
-                // Min 60px (very short putts still visible), max 600px
-                const pixelDist = Math.max(60, Math.min(600, feet * 20));
+                // Ball distance in pixels — sqrt scaling so short putts still look separated
+                // sqrt gives more px-per-foot at short range, less at long range
+                // 3ft=150, 5ft=190, 10ft=270, 15ft=330, 20ft=380, 30ft=465
+                const pixelDist = 70 * Math.sqrt(feet) + 30;
                 
                 // Clock angles: standard clock, 12=top, 3=right, 6=bottom, 9=left
                 // SVG: 0°=right, 90°=down, so 12 o'clock = -90°
