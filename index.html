@@ -4292,9 +4292,8 @@ End with [DATA] block:
                 const holeX = 0, holeY = 0; // hole at origin
                 const holeR = 30; // LARGE hole
                 
-                // Ball distance in pixels — scale so short putts feel close, long putts spread out
-                // but never so far the viz shrinks
-                const pixelDist = Math.max(100, Math.min(280, feet * 6));
+                // Ball distance in pixels — scale generously so they look properly separated
+                const pixelDist = Math.max(140, Math.min(350, feet * 8));
                 
                 // Clock angles: standard clock, 12=top, 3=right, 6=bottom, 9=left
                 // SVG: 0°=right, 90°=down, so 12 o'clock = -90°
@@ -4313,28 +4312,29 @@ End with [DATA] block:
                 // Aim offset
                 const aimInches = aimPoint ? aimPoint.inches : 0;
                 const aimDir = aimPoint ? aimPoint.direction : '';
-                const aimOffsetPx = Math.min(100, aimInches * 3.5);
+                const aimOffsetPx = Math.min(120, aimInches * 3.5);
                 
-                // The AIM POINT is where you aim your putter — it's offset from the hole
-                // It sits at the same distance from the ball as the hole, but displaced left/right
-                // For the visual: place it next to the hole, offset perpendicular to the ball-hole line
-                
-                // Direction vector from ball to hole
+                // AIM POINT: offset from hole, perpendicular to the ball→hole line
+                // "Left" and "right" are from the GOLFER'S perspective (standing at ball, looking at hole)
+                // 
+                // Ball→hole direction vector
                 const bhDx = holeX - ballX;
                 const bhDy = holeY - ballY;
-                const bhLen = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
-                // Perpendicular vector (rotated 90°)
-                const perpX = -bhDy / bhLen;
-                const perpY = bhDx / bhLen;
+                const bhLen = Math.sqrt(bhDx * bhDx + bhDy * bhDy) || 1;
                 
-                // Aim point: hole position offset perpendicular by aimOffsetPx
+                // Golfer's "left" when facing the hole = rotate ball→hole vector 90° CLOCKWISE
+                // In SVG coords: (dy/len, -dx/len) 
+                // Golfer's "right" = rotate 90° COUNTER-CLOCKWISE = (-dy/len, dx/len)
+                const leftX = bhDy / bhLen;
+                const leftY = -bhDx / bhLen;
+                
                 let aimX = holeX, aimY = holeY;
                 if (aimDir === 'left') {
-                    aimX = holeX + perpX * aimOffsetPx;
-                    aimY = holeY + perpY * aimOffsetPx;
+                    aimX = holeX + leftX * aimOffsetPx;
+                    aimY = holeY + leftY * aimOffsetPx;
                 } else if (aimDir === 'right') {
-                    aimX = holeX - perpX * aimOffsetPx;
-                    aimY = holeY - perpY * aimOffsetPx;
+                    aimX = holeX - leftX * aimOffsetPx;
+                    aimY = holeY - leftY * aimOffsetPx;
                 }
                 
                 // ==========================================
