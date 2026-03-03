@@ -1596,9 +1596,11 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
             }
 
             getGreenSpeedCategory(stimp) {
-                if (stimp < 7.5) return 'slow';
-                if (stimp < 9) return 'medium';
-                if (stimp < 10.5) return 'fast';
+                // Modern stimp ranges (±1 flex):
+                // Slow: 7-9 (mid 8) | Medium: 8.5-10.5 (mid 9.5) | Fast: 10-12 (mid 11) | Very Fast: 11.5+ (mid 12.5)
+                if (stimp < 8.75) return 'slow';
+                if (stimp < 10.25) return 'medium';
+                if (stimp < 11.75) return 'fast';
                 return 'veryfast';
             }
 
@@ -3104,6 +3106,22 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     [/\bfairway would\b/gi, 'fairway wood'],
                     [/\blay up\b/gi, 'layup'],
                     [/\bstimped\b/gi, 'stimp'],
+                    [/\bstamp\b/gi, 'stimp'],
+                    [/\bstomp\b/gi, 'stimp'],
+                    [/\bstump\b/gi, 'stimp'],
+                    [/\bstemp\b/gi, 'stimp'],
+                    [/\bskim\b/gi, 'stimp'],
+                    [/\bthe stimp\b/gi, 'stimp'],
+                    [/\bthe stamp\b/gi, 'stimp'],
+                    [/\bthe stomp\b/gi, 'stimp'],
+                    // Stimp + spoken number
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?six\b/gi, 'stimp 6'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?seven\b/gi, 'stimp 7'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?eight\b/gi, 'stimp 8'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?nine\b/gi, 'stimp 9'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?ten\b/gi, 'stimp 10'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?eleven\b/gi, 'stimp 11'],
+                    [/\bstimp?\s+(?:is\s+|at\s+|to\s+)?twelve\b/gi, 'stimp 12'],
                     [/\bgreen and regulation\b/gi, 'green in regulation'],
                     // Hole numbers
                     [/\bwhole (\d+)\b/gi, 'hole $1'],
@@ -3274,16 +3292,38 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                         }
                     }
                     
-                    // Check if setting stimp: "stimp 10" / "stimp is 9" / "green speed 11"
-                    const stimpSet = practiceLower.match(/stimp\s*(?:is\s*|at\s*|of\s*|to\s*)?(\d+(?:\.\d+)?)/i) ||
-                                     practiceLower.match(/greens?\s+(?:are\s+|at\s+|speed\s+)?(\d+(?:\.\d+)?)/i) ||
-                                     practiceLower.match(/speed\s+(?:is\s+|at\s+)?(\d+(?:\.\d+)?)/i);
-                    if (stimpSet && !text.match(/\d+\s*(?:feet|foot|ft)/i)) {
-                        const newStimp = parseFloat(stimpSet[1]);
-                        if (newStimp >= 6 && newStimp <= 14) {
-                            this.storage.data.profile.stimp = newStimp;
+                    // Check if setting green speed: "slow" / "medium" / "fast" / "very fast"
+                    // Each category has ~1 stimp flex on each side:
+                    // Slow (7-9, uses 8) | Medium (8.5-10.5, uses 9.5) | Fast (10-12, uses 11) | Very Fast (11.5-13.5, uses 12.5)
+                    if (!text.match(/\d+\s*(?:feet|foot|ft)/i)) {
+                        const speedLower = practiceLower;
+                        if (speedLower.includes('very fast') || speedLower.includes('real fast') || speedLower.includes('super fast')) {
+                            this.practiceGreenSpeed = 'veryfast';
+                            this.storage.data.profile.stimp = 12.5;
                             this.storage.save();
-                            await this.voice.speak(`Stimp ${newStimp}.`);
+                            const msg = this.practiceSlope ? `Very fast. Slope ${this.practiceSlope}%. Go.` : "Very fast. What's the slope?";
+                            await this.voice.speak(msg);
+                            return;
+                        } else if (speedLower.includes('fast')) {
+                            this.practiceGreenSpeed = 'fast';
+                            this.storage.data.profile.stimp = 11;
+                            this.storage.save();
+                            const msg = this.practiceSlope ? `Fast greens. Slope ${this.practiceSlope}%. Go.` : "Fast greens. What's the slope?";
+                            await this.voice.speak(msg);
+                            return;
+                        } else if (speedLower.includes('medium') || speedLower.includes('normal') || speedLower.includes('average')) {
+                            this.practiceGreenSpeed = 'medium';
+                            this.storage.data.profile.stimp = 9.5;
+                            this.storage.save();
+                            const msg = this.practiceSlope ? `Medium. Slope ${this.practiceSlope}%. Go.` : "Medium greens. What's the slope?";
+                            await this.voice.speak(msg);
+                            return;
+                        } else if (speedLower.includes('slow')) {
+                            this.practiceGreenSpeed = 'slow';
+                            this.storage.data.profile.stimp = 8;
+                            this.storage.save();
+                            const msg = this.practiceSlope ? `Slow greens. Slope ${this.practiceSlope}%. Go.` : "Slow greens. What's the slope?";
+                            await this.voice.speak(msg);
                             return;
                         }
                     }
@@ -3312,6 +3352,12 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                             // If slope was provided inline, save it as sticky
                             if (slopeMatch && parseInt(slopeMatch[1]) >= 1 && parseInt(slopeMatch[1]) <= 5) {
                                 this.practiceSlope = parseInt(slopeMatch[1]);
+                            }
+                            
+                            // If no green speed set yet, ask for it
+                            if (!this.practiceGreenSpeed) {
+                                await this.voice.speak('Slow, medium, or fast greens?');
+                                return;
                             }
                             
                             // If no slope set yet, ask for it
@@ -3405,7 +3451,13 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                         return;
                     }
                     
-                    await this.voice.speak("Give me a distance and clock.");
+                    if (!this.practiceGreenSpeed) {
+                        await this.voice.speak("Slow, medium, or fast greens?");
+                    } else if (!this.practiceSlope) {
+                        await this.voice.speak("What's the slope?");
+                    } else {
+                        await this.voice.speak("Give me a distance and clock.");
+                    }
                     return;
                 }
 
@@ -4029,8 +4081,9 @@ End with [DATA] block:
                 document.getElementById('practiceBtn').style.background = 'rgba(74, 222, 128, 0.4)';
                 document.getElementById('practiceBtn').textContent = '🎯 END';
                 
+                this.practiceGreenSpeed = null; // slow, medium, fast, veryfast
                 const currentStimp = this.storage.data.profile.stimp || 9;
-                this.voice.speak(`Practice mode. Stimp ${currentStimp}. What's the slope?`);
+                this.voice.speak("Practice mode. Slow, medium, or fast greens?");
             }
             
             endPracticeMode() {
