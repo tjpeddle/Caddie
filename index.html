@@ -1608,18 +1608,29 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                 const speedCat = this.getGreenSpeedCategory(stimp);
                 const slopeKey = `${Math.round(slope)}%`;
                 
-                // Round distance to nearest 5 feet
-                const distKey = Math.round(distance / 5) * 5;
-                const clampedDist = Math.max(5, Math.min(30, distKey));
-                
                 const table = this.gravityVectorTables[speedCat];
-                if (!table[slopeKey]) {
-                    // Interpolate if exact slope not in table
-                    const nearestSlope = Math.min(5, Math.max(1, Math.round(slope)));
-                    return table[`${nearestSlope}%`][clampedDist] || 10;
+                const slopeTable = table[slopeKey] || table[`${Math.min(5, Math.max(1, Math.round(slope)))}%`];
+                if (!slopeTable) return 0;
+                
+                // Tables go from 5ft to 30ft in 5ft increments
+                // For distances under 5ft, scale linearly from 0 at 0ft to table value at 5ft
+                if (distance < 5) {
+                    const fiveVal = slopeTable[5] || 0;
+                    return Math.round(fiveVal * (distance / 5));
                 }
                 
-                return table[slopeKey][clampedDist] || 10;
+                // For 5-30ft, interpolate between nearest table entries
+                const lowerKey = Math.max(5, Math.min(30, Math.floor(distance / 5) * 5));
+                const upperKey = Math.max(5, Math.min(30, Math.ceil(distance / 5) * 5));
+                
+                if (lowerKey === upperKey) {
+                    return slopeTable[lowerKey] || 0;
+                }
+                
+                const lowerVal = slopeTable[lowerKey] || 0;
+                const upperVal = slopeTable[upperKey] || 0;
+                const frac = (distance - lowerKey) / (upperKey - lowerKey);
+                return Math.round(lowerVal + (upperVal - lowerVal) * frac);
             }
 
             getAimPoint(distance, slope, stimp, breakDirection, uphillDownhill = 'level', clockPosition = null) {
@@ -4381,7 +4392,7 @@ End with [DATA] block:
                 // Aim offset
                 const aimInches = aimPoint ? aimPoint.inches : 0;
                 const aimDir = aimPoint ? aimPoint.direction : '';
-                const aimOffsetPx = Math.min(120, aimInches * 3.5);
+                const aimOffsetPx = Math.min(200, aimInches * 7);
                 
                 // AIM POINT: offset from hole, perpendicular to the ball→hole line
                 // "Left" and "right" are from the GOLFER'S perspective (standing at ball, looking at hole)
