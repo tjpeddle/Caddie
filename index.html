@@ -3548,78 +3548,86 @@ Two-tiered green with a ridge running through the middle. Back shelf slopes hard
                     if (num >= 1 && num <= 12) clockPos = num;
                 }
                 
+                // GREEN SPEED - set once per round
+                if (!feetMatch && !this.practiceMode) {
+                    if (lowerCmd.includes('very fast') || lowerCmd.includes('super fast')) {
+                        this.roundGreenSpeed = 'veryfast'; this.storage.data.profile.stimp = 12.5; this.storage.save();
+                        await this.voice.speak('Very fast greens. Locked in.'); return;
+                    } else if (lowerCmd.includes('fast')) {
+                        this.roundGreenSpeed = 'fast'; this.storage.data.profile.stimp = 11; this.storage.save();
+                        await this.voice.speak('Fast greens. Locked in.'); return;
+                    } else if (lowerCmd.includes('medium') || lowerCmd.includes('normal') || lowerCmd.includes('average')) {
+                        this.roundGreenSpeed = 'medium'; this.storage.data.profile.stimp = 9.5; this.storage.save();
+                        await this.voice.speak('Medium greens. Locked in.'); return;
+                    } else if (lowerCmd.includes('slow')) {
+                        this.roundGreenSpeed = 'slow'; this.storage.data.profile.stimp = 8; this.storage.save();
+                        await this.voice.speak('Slow greens. Locked in.'); return;
+                    }
+                }
+                if (this._pendingPutt && slopeMatch && !feetMatch) {
+                    const pF = this._pendingPutt.feet, pC = this._pendingPutt.clockPos;
+                    const pS = parseInt(slopeMatch[1]), pSt = this.storage.data.profile.stimp || 9;
+                    const pA = this.vectorPutting.getAimPoint(pF, pS, pSt, '', 'level', pC);
+                    this.showPuttVisualization(pF, pC, pA.direction, 'level', pS, pA);
+                    await this.voice.speak(pA.inches < 2 ? 'Straight. Center cup.' : pA.description + '.');
+                    this._pendingPutt = null; return;
+                }
                 if (feetMatch && (slopeMatch || hasBreak || clockPos !== null)) {
                     const feet = parseInt(feetMatch[1]);
-                    const slope = slopeMatch ? parseInt(slopeMatch[1]) : 2; // default 2%
-                    
-                    // Detect break direction (clock overrides if provided)
-                    let breakDir = '';
-                    if (clockPos !== null) {
-                        // Clock system determines break direction automatically
-                        // No need to specify left/right
-                        breakDir = ''; // getAimPoint will figure it out from clock
-                    } else if (lowerCmd.includes('left to right') || lowerCmd.includes('left-to-right')) {
-                        breakDir = 'left-to-right';
-                    } else if (lowerCmd.includes('right to left') || lowerCmd.includes('right-to-left')) {
-                        breakDir = 'right-to-left';
-                    } else if (lowerCmd.includes('breaks left') || lowerCmd.includes('break left')) {
-                        breakDir = 'right-to-left';
-                    } else if (lowerCmd.includes('breaks right') || lowerCmd.includes('break right')) {
-                        breakDir = 'left-to-right';
-                    } else if (lowerCmd.includes('straight')) {
-                        breakDir = 'straight';
+                    if (!this.roundGreenSpeed) {
+                        await this.voice.speak(feet + ' feet. Slow, medium, or fast greens?'); return;
                     }
-                    
-                    // Detect uphill/downhill (clock overrides if provided)
+                    const slope = slopeMatch ? parseInt(slopeMatch[1]) : null;
+                    if (!slope && clockPos !== null) {
+                        this._pendingPutt = { feet: feet, clockPos: clockPos };
+                        await this.voice.speak(feet + " feet, " + clockPos + " o'clock. What's the slope?"); return;
+                    } else if (!slope) {
+                        await this.voice.speak(feet + " feet. What's the slope?"); return;
+                    }
+                    let breakDir = '';
+                    if (clockPos !== null) { breakDir = ''; }
+                    else if (lowerCmd.includes('left to right') || lowerCmd.includes('left-to-right')) breakDir = 'left-to-right';
+                    else if (lowerCmd.includes('right to left') || lowerCmd.includes('right-to-left')) breakDir = 'right-to-left';
+                    else if (lowerCmd.includes('breaks left') || lowerCmd.includes('break left')) breakDir = 'right-to-left';
+                    else if (lowerCmd.includes('breaks right') || lowerCmd.includes('break right')) breakDir = 'left-to-right';
+                    else if (lowerCmd.includes('straight')) breakDir = 'straight';
                     let elevation = 'level';
                     if (clockPos === null) {
-                        if (lowerCmd.includes('uphill') || lowerCmd.includes('up hill') || lowerCmd.includes('below')) elevation = 'uphill';
-                        if (lowerCmd.includes('downhill') || lowerCmd.includes('down hill') || lowerCmd.includes('above')) elevation = 'downhill';
+                        if (lowerCmd.includes('uphill') || lowerCmd.includes('below')) elevation = 'uphill';
+                        if (lowerCmd.includes('downhill') || lowerCmd.includes('above')) elevation = 'downhill';
                     }
-                    
                     const stimp = this.storage.data.profile.stimp || 9;
-                    
                     if (clockPos !== null) {
-                        // CLOCK SYSTEM — angle-adjusted break
                         const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation, clockPos);
-                        
+                        this.showPuttVisualization(feet, clockPos, breakDir || aimPoint.direction, elevation, slope, aimPoint);
                         if (aimPoint.inches < 2 || clockPos === 12 || clockPos === 6) {
-                            let advice = `${feet} feet, ${clockPos} o'clock. Straight putt. `;
-                            if (clockPos >= 10 || clockPos <= 2) advice += 'Downhill, soft touch.';
-                            else if (clockPos >= 4 && clockPos <= 8) advice += 'Uphill, hit it firm.';
-                            else advice += 'Center of the cup.';
-                            await this.voice.speak(advice);
+                            let a = feet + " feet, " + clockPos + " o'clock. Straight. ";
+                            if (clockPos >= 10 || clockPos <= 2) a += 'Downhill, soft.';
+                            else if (clockPos >= 4 && clockPos <= 8) a += 'Uphill, firm.';
+                            else a += 'Center cup.';
+                            await this.voice.speak(a);
                         } else {
-                            let advice = `${feet} feet, ${clockPos} o'clock. ${aimPoint.description}.`;
-                            if (clockPos >= 10 || clockPos <= 2) advice += ' Downhill, soft touch.';
-                            else if (clockPos >= 4 && clockPos <= 8) advice += ' Uphill, firm stroke.';
-                            await this.voice.speak(advice);
+                            await this.voice.speak(feet + " feet, " + clockPos + " o'clock. " + aimPoint.description + '.');
                         }
                     } else if (breakDir === 'straight') {
-                        let advice = `${feet} feet, straight. `;
-                        if (elevation === 'uphill') advice += `Uphill, hit it firm, 18 inches past.`;
-                        else if (elevation === 'downhill') advice += `Downhill, soft touch, let gravity work.`;
-                        else advice += `Center of the cup. Die it 12 inches past.`;
-                        
-                        await this.voice.speak(advice);
+                        this.showPuttVisualization(feet, null, 'straight', elevation, slope, { inches: 0, direction: '', description: 'Straight putt' });
+                        let a = feet + ' feet, straight. ';
+                        if (elevation === 'uphill') a += 'Uphill, firm.';
+                        else if (elevation === 'downhill') a += 'Downhill, soft.';
+                        else a += 'Center cup.';
+                        await this.voice.speak(a);
                     } else if (breakDir) {
                         const aimPoint = this.vectorPutting.getAimPoint(feet, slope, stimp, breakDir, elevation);
-                        let advice = `${aimPoint.description}.`;
-                        if (elevation === 'uphill') advice += ' Uphill, firm, 18 past.';
-                        else if (elevation === 'downhill') advice += ' Downhill, easy does it.';
-                        else advice += ' Die it 12 past.';
-                        await this.voice.speak(advice);
+                        this.showPuttVisualization(feet, null, breakDir, elevation, slope, aimPoint);
+                        await this.voice.speak(aimPoint.description + '.');
                     } else {
-                        await this.voice.speak(`${feet} feet, ${slope} percent. Which way does it break? Or give me a clock position.`);
+                        await this.voice.speak(feet + ' feet. Clock or break direction?');
                     }
-                    
-                    // Track the putt in conversation history for Claude
                     this.ai.conversationHistory.push(
                         { role: 'user', content: text },
-                        { role: 'assistant', content: `[Gave putting read for ${feet}ft, ${slope}% slope, ${breakDir || 'unknown break'}]` }
+                        { role: 'assistant', content: '[Gave putting read]' }
                     );
-                    
-                    return; // Fast response — no API call needed
+                    return;
                 }
                 
                 // Set stimp for the round: "stimp 10" or "greens are 11"
