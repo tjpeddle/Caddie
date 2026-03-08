@@ -288,7 +288,8 @@ button:active { transform: scale(0.95); }
     display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .club-card.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
-.club-card .club-icon { font-size: 20px; line-height: 1; }
+.club-card .club-icon { font-size: 20px; line-height: 1; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); }
+.club-card .club-icon img { width: 36px; height: 36px; object-fit: cover; border-radius: 50%; }
 .club-card .club-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; }
 
 /* Tee club selection */
@@ -299,7 +300,8 @@ button:active { transform: scale(0.95); }
     display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 60px;
 }
 .tee-club-btn.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
-.tee-club-btn .club-icon { font-size: 22px; }
+.tee-club-btn .club-icon { font-size: 22px; width: 48px; height: 48px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); }
+.tee-club-btn .club-icon img { width: 44px; height: 44px; object-fit: cover; border-radius: 50%; }
 .tee-club-btn .club-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
 
 /* Yardage slider */
@@ -745,20 +747,23 @@ function renderRoundStep() {
                 </div>`;
             break;
             
-        case 'up_down':
-            body.innerHTML = `
-                <div class="stat-question">Up & Down?</div>
-                <div class="stat-row">
-                    <button class="stat-btn yes" onclick="recordUpDown(true)"><span class="icon">✓</span><span class="label">YES</span></button>
-                    <button class="stat-btn no" onclick="recordUpDown(false)"><span class="icon">✗</span><span class="label">NO</span></button>
-                </div>`;
-            break;
+
             
         case 'putt':
             showScreen('puttScreen');
             document.getElementById('puttHeaderTitle').textContent = `HOLE ${h.number} · PUTT ${h.putts + 1}`;
             return;
             
+        case 'total_putts':
+            body.innerHTML = `
+                <div class="stat-question">TOTAL PUTTS THIS HOLE?</div>
+                <div class="stat-row">
+                    <button class="stat-btn neutral" onclick="setTotalPutts(2)"><span class="icon" style="font-size:28px;">2</span></button>
+                    <button class="stat-btn neutral" onclick="setTotalPutts(3)"><span class="icon" style="font-size:28px;">3</span></button>
+                    <button class="stat-btn neutral" onclick="setTotalPutts(4)"><span class="icon" style="font-size:28px;">4</span></button>
+                </div>`;
+            break;
+
         case 'next': {
             const totalPutts = h.putts;
             const score = getHoleScore(h);
@@ -880,15 +885,11 @@ function recordGreen(result) {
 
 function recordMissLocation(loc) {
     STATE.currentHoleData.missLocation = loc;
-    STATE.roundStep = 'up_down';
-    renderRoundStep();
-}
-
-function recordUpDown(made) {
-    STATE.currentHoleData.upDown = made;
     STATE.roundStep = 'putt';
     renderRoundStep();
 }
+
+// Up & down is now auto-calculated from putts
 
 // Navigation helpers
 function goToPutting() {
@@ -903,6 +904,12 @@ function exitPutting() {
     } else {
         showScreen('setupScreen');
     }
+}
+
+function setTotalPutts(total) {
+    STATE.currentHoleData.putts = total;
+    STATE.roundStep = 'next';
+    renderRoundStep();
 }
 
 function adjustPutts(delta) {
@@ -1155,11 +1162,10 @@ function recordResult(result) {
             showScreen('roundScreen');
             renderRoundStep();
         } else {
-            // Another putt — go back to putting screen
-            STATE.clockPos = null;
-            document.querySelectorAll('.clock-num').forEach(b => b.classList.remove('active'));
-            document.getElementById('puttHeaderTitle').textContent = `HOLE ${STATE.currentHoleData.number} · PUTT ${STATE.currentHoleData.putts + 1}`;
-            showScreen('puttScreen');
+            // Missed first putt — ask total putts instead of re-entering putting screen
+            STATE.roundStep = 'total_putts';
+            showScreen('roundScreen');
+            renderRoundStep();
         }
     } else {
         // Practice mode
@@ -1229,12 +1235,12 @@ function computeRoundStats(holes) {
     const fwEligible = holes.filter(h => h.fairway !== null).length;
     const gir = holes.filter(h => h.green === true).length;
     const totalPutts = holes.reduce((s,h) => s + h.putts, 0);
-    const upDownAttempts = holes.filter(h => h.upDown !== null);
-    const upDownMade = upDownAttempts.filter(h => h.upDown === true).length;
-    const bunkerAttempts = holes.filter(h => h.missLocation === 'bunker' && h.upDown !== null);
-    const bunkerMade = bunkerAttempts.filter(h => h.upDown === true).length;
-    const fringeAttempts = holes.filter(h => h.missLocation === 'fringe' && h.upDown !== null);
-    const fringeMade = fringeAttempts.filter(h => h.upDown === true).length;
+    const upDownAttempts = holes.filter(h => h.green === false && h.missLocation);
+    const upDownMade = upDownAttempts.filter(h => h.putts === 1).length;
+    const bunkerAttempts = holes.filter(h => h.missLocation === 'bunker');
+    const bunkerMade = bunkerAttempts.filter(h => h.putts === 1).length;
+    const fringeAttempts = holes.filter(h => h.missLocation === 'fringe');
+    const fringeMade = fringeAttempts.filter(h => h.putts === 1).length;
     
     return {
         holes: total,
@@ -1290,18 +1296,13 @@ function getHoleScore(h) {
     if (!h || !h.par) return null;
     let score;
     if (h.green) {
-        // On green in reg: par = 2 putts
+        // Hit green in reg: par = 2 putts
         score = h.par + (h.putts - 2);
-    } else if (h.upDown === true) {
-        // Missed green, got up & down (chip + 1 putt = par)
-        score = h.par;
-    } else if (h.upDown === false) {
-        // Missed green, failed up & down (chip + putts)
-        // 1 chip shot + however many putts, vs regulation (2 putts)
-        score = h.par + 1 + (h.putts - 1);
     } else {
-        // Fallback
-        score = h.par + (h.putts - 2);
+        // Missed green: 1 chip + putts
+        // Up & down = chip + 1 putt = par (auto-calculated)
+        score = h.par + (h.putts - 1);
+        // h.putts=1 -> par, h.putts=2 -> bogey, h.putts=3 -> double
     }
     return Math.max(1, score);
 }
@@ -1429,23 +1430,44 @@ function playTone(freq, duration, delay, type, gain) {
 function playSound(type) {
     try {
         if (type === 'par') {
-            // Solid two-note confirmation: C5 → E5
-            playTone(523, 0.15, 0, 'sine', 0.25);
-            playTone(659, 0.25, 0.15, 'sine', 0.3);
+            // Satisfying 3-note ascending chime, ~1.5 seconds
+            playTone(440, 0.3, 0, 'sine', 0.3);
+            playTone(554, 0.3, 0.25, 'sine', 0.35);
+            playTone(659, 0.6, 0.5, 'sine', 0.3);
+            // Warm undertone
+            playTone(220, 0.8, 0.2, 'triangle', 0.1);
         } else if (type === 'birdie') {
-            // Bright ascending three-note: C5 → E5 → G5
-            playTone(523, 0.12, 0, 'sine', 0.25);
-            playTone(659, 0.12, 0.12, 'sine', 0.3);
-            playTone(784, 0.35, 0.24, 'sine', 0.35);
+            // Bright celebratory fanfare, ~2.5 seconds
+            playTone(523, 0.25, 0, 'sine', 0.3);
+            playTone(659, 0.25, 0.2, 'sine', 0.35);
+            playTone(784, 0.25, 0.4, 'sine', 0.35);
+            playTone(1047, 0.8, 0.6, 'sine', 0.35);
+            // Harmony layer
+            playTone(659, 0.6, 0.6, 'triangle', 0.15);
+            playTone(784, 0.5, 0.8, 'triangle', 0.12);
+            // Sparkle
+            playTone(1568, 0.3, 1.0, 'sine', 0.08);
+            playTone(2093, 0.2, 1.2, 'sine', 0.05);
+            // Warm bass
+            playTone(262, 1.0, 0.4, 'triangle', 0.1);
         } else if (type === 'eagle') {
-            // Triumphant fanfare: C5 → E5 → G5 → C6 with harmonics
-            playTone(523, 0.12, 0, 'sine', 0.25);
-            playTone(659, 0.12, 0.1, 'sine', 0.3);
-            playTone(784, 0.12, 0.2, 'sine', 0.35);
-            playTone(1047, 0.5, 0.3, 'sine', 0.35);
-            // Add a shimmer
-            playTone(1319, 0.4, 0.35, 'triangle', 0.15);
-            playTone(1568, 0.3, 0.4, 'triangle', 0.1);
+            // Epic triumphant fanfare, ~3.5 seconds
+            playTone(392, 0.3, 0, 'sine', 0.3);
+            playTone(523, 0.3, 0.2, 'sine', 0.35);
+            playTone(659, 0.3, 0.4, 'sine', 0.35);
+            playTone(784, 0.3, 0.6, 'sine', 0.35);
+            playTone(1047, 1.2, 0.8, 'sine', 0.4);
+            // Full harmony
+            playTone(523, 1.0, 0.8, 'triangle', 0.2);
+            playTone(659, 0.8, 0.8, 'triangle', 0.15);
+            playTone(784, 0.8, 1.0, 'triangle', 0.15);
+            // Shimmer cascade
+            playTone(1568, 0.4, 1.2, 'sine', 0.1);
+            playTone(2093, 0.3, 1.4, 'sine', 0.08);
+            playTone(2637, 0.3, 1.6, 'sine', 0.06);
+            // Deep bass
+            playTone(196, 1.5, 0.6, 'triangle', 0.12);
+            playTone(262, 1.2, 0.8, 'triangle', 0.1);
         }
     } catch(e) { /* audio not available */ }
 }
