@@ -269,12 +269,50 @@ button:active { transform: scale(0.95); }
 .sc-score { background: var(--surface); color: var(--white); }
 .sc-score.birdie { color: var(--green); background: rgba(46,204,113,0.15); }
 .sc-score.bogey { color: var(--red); background: rgba(231,76,60,0.1); }
+.sc-score.dbl-bogey { color: #ff6b6b; background: rgba(231,76,60,0.2); }
+.sc-score.trpl-bogey { color: #ff4444; background: rgba(231,76,60,0.3); }
 .sc-score.eagle { color: var(--gold); background: rgba(240,192,64,0.15); }
+.sc-score.ace { color: #fff; background: linear-gradient(135deg, #f0c040, #e67e22); font-weight: 900; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
 .sc-score.current { border: 2px solid var(--green); }
 
 /* Empty state */
 .empty-state { text-align: center; padding: 40px 20px; color: var(--gray); }
 .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+/* Club card grid */
+.club-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 400px; margin: 0 auto; }
+.club-card {
+    width: 62px; padding: 8px 4px; border-radius: 12px; background: var(--surface);
+    color: var(--gray); text-align: center; border: 2px solid transparent;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.club-card.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
+.club-card .club-icon { font-size: 20px; line-height: 1; }
+.club-card .club-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; }
+
+/* Tee club selection */
+.tee-clubs { display: flex; gap: 8px; justify-content: center; max-width: 400px; margin: 0 auto; flex-wrap: wrap; }
+.tee-club-btn {
+    padding: 14px 16px; border-radius: var(--radius); background: var(--surface);
+    color: var(--gray); text-align: center; border: 2px solid transparent;
+    display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 60px;
+}
+.tee-club-btn.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
+.tee-club-btn .club-icon { font-size: 22px; }
+.tee-club-btn .club-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
+
+/* Yardage slider */
+.yardage-display {
+    font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 700;
+    color: var(--white); text-align: center;
+}
+.yardage-display span { font-size: 16px; color: var(--gray); }
+.yardage-slider { width: 100%; max-width: 360px; height: 44px; -webkit-appearance: none; appearance: none; background: var(--surface); border-radius: 22px; outline: none; margin: 4px auto; display: block; }
+.yardage-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--green); cursor: pointer; border: 3px solid var(--white);
+}
 </style>
 </head>
 <body>
@@ -611,7 +649,7 @@ function startRound() {
 }
 
 function newHoleData(num) {
-    return { number: num, par: null, fairway: null, fairwayMiss: null, 
+    return { number: num, par: null, teeClub: null, fairway: null, fairwayMiss: null, 
              approaches: [], // { club, distance }
              green: null, missLocation: null, upDown: null, 
              putts: 0, puttDistances: [], score: null };
@@ -634,6 +672,18 @@ function renderRoundStep() {
                     <button class="stat-btn neutral" onclick="recordPar(3)"><span class="icon">3</span></button>
                     <button class="stat-btn neutral" onclick="recordPar(4)"><span class="icon">4</span></button>
                     <button class="stat-btn neutral" onclick="recordPar(5)"><span class="icon">5</span></button>
+                </div>`;
+            break;
+
+        case 'tee_club':
+            body.innerHTML = `
+                <div class="stat-question">TEE SHOT</div>
+                <div class="tee-clubs">
+                    <button class="tee-club-btn" onclick="pickTeeClub('4i')"><span class="club-icon">🏌️</span><span class="club-name">4i</span></button>
+                    <button class="tee-club-btn" onclick="pickTeeClub('HYB')"><span class="club-icon">🏌️</span><span class="club-name">HYB</span></button>
+                    <button class="tee-club-btn" onclick="pickTeeClub('5W')"><span class="club-icon">🪵</span><span class="club-name">5W</span></button>
+                    <button class="tee-club-btn" onclick="pickTeeClub('3W')"><span class="club-icon">🪵</span><span class="club-name">3W</span></button>
+                    <button class="tee-club-btn" onclick="pickTeeClub('DRV')"><span class="club-icon">🪵</span><span class="club-name">DRV</span></button>
                 </div>`;
             break;
 
@@ -697,31 +747,58 @@ function renderRoundStep() {
             document.getElementById('puttHeaderTitle').textContent = `HOLE ${h.number} · PUTT ${h.putts + 1}`;
             return;
             
-        case 'next':
+        case 'next': {
             const totalPutts = h.putts;
+            const score = getHoleScore(h);
+            const diff = score - h.par;
+            let scoreText = '', scoreColor = 'var(--white)';
+            if (score === 1) { scoreText = 'HOLE IN ONE! 🏆'; scoreColor = '#f0c040'; }
+            else if (diff <= -2) { scoreText = 'EAGLE! 🦅'; scoreColor = '#f0c040'; }
+            else if (diff === -1) { scoreText = 'BIRDIE! 🐦'; scoreColor = 'var(--green)'; }
+            else if (diff === 0) { scoreText = 'PAR 👊'; scoreColor = 'var(--white)'; }
+            else if (diff === 1) { scoreText = 'BOGEY'; scoreColor = 'var(--red)'; }
+            else if (diff === 2) { scoreText = 'DOUBLE BOGEY'; scoreColor = '#ff6b6b'; }
+            else { scoreText = 'TRIPLE+'; scoreColor = '#ff4444'; }
+            
             body.innerHTML = `
-                <div class="stat-question">HOLE ${h.number} COMPLETE</div>
+                <div class="stat-question">HOLE ${h.number}</div>
                 <div style="text-align:center; margin: 8px 0;">
-                    <div style="font-family:'JetBrains Mono',monospace; font-size:48px; font-weight:700; color:var(--white)">${totalPutts}</div>
-                    <div style="font-size:14px; color:var(--gray)">PUTTS</div>
+                    <div style="font-family:'JetBrains Mono',monospace; font-size:56px; font-weight:700; color:${scoreColor}">${score}</div>
+                    <div style="font-size:18px; font-weight:700; color:${scoreColor}; letter-spacing:2px; margin-top:4px;">${scoreText}</div>
+                    <div style="font-size:13px; color:var(--gray); margin-top:8px;">${totalPutts} putts · Par ${h.par}</div>
                 </div>
                 <div class="stat-row">
                     <button class="stat-btn neutral" onclick="adjustPutts(-1)"><span class="icon">−</span></button>
                     <button class="stat-btn neutral" onclick="adjustPutts(1)"><span class="icon">+</span></button>
                 </div>
                 <button class="next-hole-btn" onclick="nextHole()" style="margin-top:16px">NEXT HOLE →</button>`;
+            
+            // Play sound effect
+            if (diff <= -2 || score === 1) playSound('eagle');
+            else if (diff === -1) playSound('birdie');
+            else if (diff === 0) playSound('par');
             break;
+        }
     }
 }
 
 function recordPar(p) {
     STATE.currentHoleData.par = p;
     if (p === 3) {
-        STATE.roundStep = 'approach'; // skip fairway for par 3
+        STATE.roundStep = 'approach'; // skip fairway, go to approach club+dist
     } else {
-        STATE.roundStep = 'fairway';
+        STATE.roundStep = 'tee_club'; // pick tee club first
     }
     renderRoundStep();
+}
+
+function pickTeeClub(club) {
+    STATE.currentHoleData.teeClub = club;
+    document.querySelectorAll('.tee-club-btn').forEach(b => {
+        b.classList.toggle('active', b.querySelector('.club-name').textContent === club);
+    });
+    STATE.roundStep = 'fairway';
+    setTimeout(() => renderRoundStep(), 200);
 }
 
 function recordFairway(result) {
@@ -742,13 +819,23 @@ function pickClub(club) {
 
 function pickYardage(y) {
     _pendingYardage = y;
-    document.querySelectorAll('.yardage-pick').forEach(b => b.classList.toggle('active', parseInt(b.dataset.yard) === y));
+    STATE._pendingYardage = y;
+    checkApproachReady();
+}
+
+function updateYardage() {
+    const val = parseInt(document.getElementById('yardageSlider').value);
+    _pendingYardage = val;
+    STATE._pendingYardage = val;
+    document.getElementById('yardageValue').textContent = val;
     checkApproachReady();
 }
 
 function checkApproachReady() {
     const btn = document.getElementById('approachConfirmBtn');
-    if (btn && _pendingClub && _pendingYardage) {
+    // Slider always has a value, just need club
+    if (!_pendingYardage) _pendingYardage = parseInt(document.getElementById('yardageSlider')?.value || 140);
+    if (btn && _pendingClub) {
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
     }
@@ -829,7 +916,16 @@ function nextHole() {
 
 function updateScoreDisplay() {
     const totalPutts = STATE.holes.reduce((s, h) => s + h.putts, 0);
-    document.getElementById('roundScoreDisplay').textContent = `${totalPutts} putts · ${STATE.holes.length} holes`;
+    let totalScore = 0, totalPar = 0;
+    STATE.holes.forEach(h => {
+        if (h.par) {
+            totalScore += getHoleScore(h) || 0;
+            totalPar += h.par;
+        }
+    });
+    const diff = totalScore - totalPar;
+    const diffStr = diff === 0 ? 'E' : diff > 0 ? '+' + diff : '' + diff;
+    document.getElementById('roundScoreDisplay').textContent = STATE.holes.length > 0 ? `${diffStr} · ${totalPutts} putts` : 'NEW ROUND';
 }
 
 // ==========================================
@@ -1178,30 +1274,93 @@ function showStats() {
     document.getElementById('statsOverlay').classList.add('active');
 }
 
+function getHoleScore(h) {
+    if (!h || !h.par) return null;
+    let score;
+    if (h.green) {
+        // On green in reg: par = 2 putts
+        score = h.par + (h.putts - 2);
+    } else if (h.upDown === true) {
+        // Missed green, got up & down (chip + 1 putt = par)
+        score = h.par;
+    } else if (h.upDown === false) {
+        // Missed green, failed up & down (chip + putts)
+        // 1 chip shot + however many putts, vs regulation (2 putts)
+        score = h.par + 1 + (h.putts - 1);
+    } else {
+        // Fallback
+        score = h.par + (h.putts - 2);
+    }
+    return Math.max(1, score);
+}
+
+function scoreLabel(score, par) {
+    const diff = score - par;
+    if (score === 1) return { text: '1!', cls: 'ace' };
+    if (diff <= -2) return { text: score, cls: 'eagle' };
+    if (diff === -1) return { text: score, cls: 'birdie' };
+    if (diff === 0) return { text: score, cls: '' };
+    if (diff === 1) return { text: score, cls: 'bogey' };
+    if (diff === 2) return { text: score, cls: 'dbl-bogey' };
+    return { text: score, cls: 'trpl-bogey' };
+}
+
 function showScorecard() {
     const body = document.getElementById('scorecardBody');
     const allHoles = [...STATE.holes];
-    if (STATE.currentHoleData) allHoles.push(STATE.currentHoleData);
+    if (STATE.currentHoleData && STATE.currentHoleData.par) allHoles.push(STATE.currentHoleData);
     
+    let totalScore = 0, totalPar = 0;
     let html = '<div class="stat-card"><div class="stat-card-title">Scorecard</div>';
+    
     // Front 9
     html += '<div class="scorecard">';
     for (let i = 1; i <= 9; i++) html += `<div class="sc-cell sc-header">${i}</div>`;
     for (let i = 1; i <= 9; i++) {
-        const h = allHoles.find(h => h.number === i);
-        const cls = h ? (i === STATE.currentHole ? ' current' : '') : '';
-        html += `<div class="sc-cell sc-score${cls}">${h ? h.putts : '·'}</div>`;
+        const h = allHoles.find(x => x.number === i);
+        html += `<div class="sc-cell sc-par">${h && h.par ? h.par : '\u00b7'}</div>`;
+    }
+    for (let i = 1; i <= 9; i++) {
+        const h = allHoles.find(x => x.number === i);
+        const score = h ? getHoleScore(h) : null;
+        if (score !== null && h.par) {
+            const sl = scoreLabel(score, h.par);
+            const cur = i === STATE.currentHole ? ' current' : '';
+            html += `<div class="sc-cell sc-score ${sl.cls}${cur}">${sl.text}</div>`;
+            totalScore += score; totalPar += h.par;
+        } else {
+            html += `<div class="sc-cell sc-score${i === STATE.currentHole ? ' current' : ''}">\u00b7</div>`;
+        }
     }
     html += '</div>';
+    
     // Back 9
     html += '<div class="scorecard" style="margin-top:8px">';
     for (let i = 10; i <= 18; i++) html += `<div class="sc-cell sc-header">${i}</div>`;
     for (let i = 10; i <= 18; i++) {
-        const h = allHoles.find(h => h.number === i);
-        const cls = h ? (i === STATE.currentHole ? ' current' : '') : '';
-        html += `<div class="sc-cell sc-score${cls}">${h ? h.putts : '·'}</div>`;
+        const h = allHoles.find(x => x.number === i);
+        html += `<div class="sc-cell sc-par">${h && h.par ? h.par : '\u00b7'}</div>`;
     }
-    html += '</div></div>';
+    for (let i = 10; i <= 18; i++) {
+        const h = allHoles.find(x => x.number === i);
+        const score = h ? getHoleScore(h) : null;
+        if (score !== null && h.par) {
+            const sl = scoreLabel(score, h.par);
+            const cur = i === STATE.currentHole ? ' current' : '';
+            html += `<div class="sc-cell sc-score ${sl.cls}${cur}">${sl.text}</div>`;
+            totalScore += score; totalPar += h.par;
+        } else {
+            html += `<div class="sc-cell sc-score${i === STATE.currentHole ? ' current' : ''}">\u00b7</div>`;
+        }
+    }
+    html += '</div>';
+    
+    const diff = totalScore - totalPar;
+    const diffStr = diff === 0 ? 'E' : diff > 0 ? '+' + diff : '' + diff;
+    html += `<div style="display:flex; justify-content:space-between; margin-top:12px; padding:8px;">
+        <span style="color:var(--gray); font-size:14px;">TOTAL</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:18px; color:${diff < 0 ? 'var(--green)' : diff > 0 ? 'var(--red)' : 'var(--white)'};">${totalScore} (${diffStr})</span>
+    </div></div>`;
     
     body.innerHTML = html;
     document.getElementById('scorecardOverlay').classList.add('active');
@@ -1230,6 +1389,53 @@ function showHistory() {
     }
     
     document.getElementById('historyOverlay').classList.add('active');
+}
+
+// ==========================================
+// SOUND EFFECTS (Web Audio API)
+// ==========================================
+let audioCtx = null;
+function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+}
+
+function playTone(freq, duration, delay, type, gain) {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const vol = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    vol.gain.value = gain || 0.3;
+    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    osc.connect(vol);
+    vol.connect(ctx.destination);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + duration);
+}
+
+function playSound(type) {
+    try {
+        if (type === 'par') {
+            // Solid two-note confirmation: C5 → E5
+            playTone(523, 0.15, 0, 'sine', 0.25);
+            playTone(659, 0.25, 0.15, 'sine', 0.3);
+        } else if (type === 'birdie') {
+            // Bright ascending three-note: C5 → E5 → G5
+            playTone(523, 0.12, 0, 'sine', 0.25);
+            playTone(659, 0.12, 0.12, 'sine', 0.3);
+            playTone(784, 0.35, 0.24, 'sine', 0.35);
+        } else if (type === 'eagle') {
+            // Triumphant fanfare: C5 → E5 → G5 → C6 with harmonics
+            playTone(523, 0.12, 0, 'sine', 0.25);
+            playTone(659, 0.12, 0.1, 'sine', 0.3);
+            playTone(784, 0.12, 0.2, 'sine', 0.35);
+            playTone(1047, 0.5, 0.3, 'sine', 0.35);
+            // Add a shimmer
+            playTone(1319, 0.4, 0.35, 'triangle', 0.15);
+            playTone(1568, 0.3, 0.4, 'triangle', 0.1);
+        }
+    } catch(e) { /* audio not available */ }
 }
 
 // ==========================================
