@@ -848,7 +848,8 @@ function buildPuttViz(feet, clockPos, slope, aim) {
     
     const aimInches = aim.inches;
     const aimDir = aim.direction;
-    // Aim offset: matches practice mode scaling (7px per inch, max 200px)
+    // Aim offset from hole CENTER (per Templeton - cup is 4.25" wide = 2.125" radius)
+    // So 5" aim = just ~3" past the cup edge — should look close to the hole
     const aimOffsetPx = Math.min(200, aimInches * 7);
     
     // ZBL direction = straight up (toward 12 o'clock) = (0, -1) in SVG
