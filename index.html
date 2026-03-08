@@ -848,9 +848,10 @@ function buildPuttViz(feet, clockPos, slope, aim) {
     
     const aimInches = aim.inches;
     const aimDir = aim.direction;
-    // Aim offset from hole CENTER (per Templeton - cup is 4.25" wide = 2.125" radius)
-    // So 5" aim = just ~3" past the cup edge — should look close to the hole
-    const aimOffsetPx = Math.min(200, aimInches * 7);
+    // Aim offset scaled to the CUP (our reference object)
+    // Cup = 4.25" diameter = 60px diameter, so 1 inch = 14px
+    // 9" aim = ~126px = about 2 cup widths above hole — visually correct
+    const aimOffsetPx = aimInches * 14;
     
     // ZBL direction = straight up (toward 12 o'clock) = (0, -1) in SVG
     let aimX = holeX;
