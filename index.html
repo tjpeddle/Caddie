@@ -653,7 +653,7 @@ function startRound() {
 function newHoleData(num) {
     return { number: num, par: null, teeClub: null, fairway: null, fairwayMiss: null, 
              approaches: [], // { club, distance }
-             green: null, missLocation: null, upDown: null, 
+             green: null, missLocation: null, chipClub: null, chipProximity: null, chippedIn: false, 
              putts: 0, puttDistances: [], score: null };
 }
 
@@ -747,6 +747,29 @@ function renderRoundStep() {
                 </div>`;
             break;
             
+        case 'chip': {
+            const loc = h.missLocation || 'rough';
+            const chipClubs = ['60°','56°','52°','PW','9i','8i'];
+            body.innerHTML = `
+                <div class="stat-question">CHIP / PITCH</div>
+                <div class="setup-label" style="margin-top:6px">From ${loc.toUpperCase()}</div>
+                <div class="setup-label" style="margin-top:10px">Club</div>
+                <div class="club-grid">
+                    ${chipClubs.map(c => '<button class="club-card club-pick" onclick="pickChipClub(\'' + c + '\')" data-club="' + c + '"><span class="club-name">' + c + '</span></button>').join('')}
+                </div>
+                <div class="setup-label" style="margin-top:10px">How close to the pin?</div>
+                <div class="stat-row">
+                    <button class="stat-btn neutral" onclick="recordChipResult('inside5')"><span class="icon">🎯</span><span class="label">&lt; 5ft</span></button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('5to15')"><span class="icon">📏</span><span class="label">5-15ft</span></button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('15to30')"><span class="icon">📐</span><span class="label">15-30ft</span></button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('30plus')"><span class="icon">🏃</span><span class="label">30ft+</span></button>
+                </div>
+                <div class="stat-row" style="margin-top:8px">
+                    <button class="stat-btn yes" onclick="recordChipResult('holed')" style="flex:1"><span class="icon">⛳</span><span class="label">CHIPPED IN!</span></button>
+                </div>`;
+            break;
+        }
+            
 
             
         case 'putt':
@@ -790,10 +813,6 @@ function renderRoundStep() {
                 </div>
                 <button class="next-hole-btn" onclick="nextHole()" style="margin-top:16px">NEXT HOLE →</button>`;
             
-            // Play sound effect
-            if (diff <= -2 || score === 1) playSound('eagle');
-            else if (diff === -1) playSound('birdie');
-            else if (diff === 0) playSound('par');
             break;
         }
     }
@@ -885,11 +904,27 @@ function recordGreen(result) {
 
 function recordMissLocation(loc) {
     STATE.currentHoleData.missLocation = loc;
-    STATE.roundStep = 'putt';
+    STATE.roundStep = 'chip';
     renderRoundStep();
 }
 
-// Up & down is now auto-calculated from putts
+function pickChipClub(club) {
+    STATE.currentHoleData.chipClub = club;
+    document.querySelectorAll('.chip .club-pick').forEach(b => b.classList.toggle('active', b.dataset.club === club));
+}
+
+function recordChipResult(proximity) {
+    STATE.currentHoleData.chipProximity = proximity;
+    if (proximity === 'holed') {
+        // Chipped in! That's an automatic up & down (or better)
+        STATE.currentHoleData.putts = 0;
+        STATE.currentHoleData.chippedIn = true;
+        STATE.roundStep = 'next';
+    } else {
+        STATE.roundStep = 'putt';
+    }
+    renderRoundStep();
+}
 
 // Navigation helpers
 function goToPutting() {
@@ -1242,8 +1277,15 @@ function computeRoundStats(holes) {
     const fringeAttempts = holes.filter(h => h.missLocation === 'fringe');
     const fringeMade = fringeAttempts.filter(h => h.putts === 1).length;
     
+    const chipInside5 = holes.filter(h => h.chipProximity === 'inside5').length;
+    const chip5to15 = holes.filter(h => h.chipProximity === '5to15').length;
+    const chip15to30 = holes.filter(h => h.chipProximity === '15to30').length;
+    const chip30plus = holes.filter(h => h.chipProximity === '30plus').length;
+    const chippedIn = holes.filter(h => h.chippedIn === true).length;
+    
     return {
         holes: total,
+        chipInside5, chip5to15, chip15to30, chip30plus, chippedIn,
         fairways: fw, fairwayTotal: fwEligible,
         gir: gir, girTotal: total,
         putts: totalPutts,
@@ -1298,11 +1340,13 @@ function getHoleScore(h) {
     if (h.green) {
         // Hit green in reg: par = 2 putts
         score = h.par + (h.putts - 2);
+    } else if (h.chippedIn) {
+        // Chipped in from off the green
+        score = h.par - 1; // birdie equivalent (saved a putt)
     } else {
         // Missed green: 1 chip + putts
-        // Up & down = chip + 1 putt = par (auto-calculated)
+        // chip + 1 putt = par (up & down), chip + 2 = bogey, etc.
         score = h.par + (h.putts - 1);
-        // h.putts=1 -> par, h.putts=2 -> bogey, h.putts=3 -> double
     }
     return Math.max(1, score);
 }
@@ -1402,74 +1446,6 @@ function showHistory() {
     }
     
     document.getElementById('historyOverlay').classList.add('active');
-}
-
-// ==========================================
-// SOUND EFFECTS (Web Audio API)
-// ==========================================
-let audioCtx = null;
-function getAudioCtx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return audioCtx;
-}
-
-function playTone(freq, duration, delay, type, gain) {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const vol = ctx.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    vol.gain.value = gain || 0.3;
-    vol.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
-    osc.connect(vol);
-    vol.connect(ctx.destination);
-    osc.start(ctx.currentTime + delay);
-    osc.stop(ctx.currentTime + delay + duration);
-}
-
-function playSound(type) {
-    try {
-        if (type === 'par') {
-            // Satisfying 3-note ascending chime, ~1.5 seconds
-            playTone(440, 0.3, 0, 'sine', 0.3);
-            playTone(554, 0.3, 0.25, 'sine', 0.35);
-            playTone(659, 0.6, 0.5, 'sine', 0.3);
-            // Warm undertone
-            playTone(220, 0.8, 0.2, 'triangle', 0.1);
-        } else if (type === 'birdie') {
-            // Bright celebratory fanfare, ~2.5 seconds
-            playTone(523, 0.25, 0, 'sine', 0.3);
-            playTone(659, 0.25, 0.2, 'sine', 0.35);
-            playTone(784, 0.25, 0.4, 'sine', 0.35);
-            playTone(1047, 0.8, 0.6, 'sine', 0.35);
-            // Harmony layer
-            playTone(659, 0.6, 0.6, 'triangle', 0.15);
-            playTone(784, 0.5, 0.8, 'triangle', 0.12);
-            // Sparkle
-            playTone(1568, 0.3, 1.0, 'sine', 0.08);
-            playTone(2093, 0.2, 1.2, 'sine', 0.05);
-            // Warm bass
-            playTone(262, 1.0, 0.4, 'triangle', 0.1);
-        } else if (type === 'eagle') {
-            // Epic triumphant fanfare, ~3.5 seconds
-            playTone(392, 0.3, 0, 'sine', 0.3);
-            playTone(523, 0.3, 0.2, 'sine', 0.35);
-            playTone(659, 0.3, 0.4, 'sine', 0.35);
-            playTone(784, 0.3, 0.6, 'sine', 0.35);
-            playTone(1047, 1.2, 0.8, 'sine', 0.4);
-            // Full harmony
-            playTone(523, 1.0, 0.8, 'triangle', 0.2);
-            playTone(659, 0.8, 0.8, 'triangle', 0.15);
-            playTone(784, 0.8, 1.0, 'triangle', 0.15);
-            // Shimmer cascade
-            playTone(1568, 0.4, 1.2, 'sine', 0.1);
-            playTone(2093, 0.3, 1.4, 'sine', 0.08);
-            playTone(2637, 0.3, 1.6, 'sine', 0.06);
-            // Deep bass
-            playTone(196, 1.5, 0.6, 'triangle', 0.12);
-            playTone(262, 1.2, 0.8, 'triangle', 0.1);
-        }
-    } catch(e) { /* audio not available */ }
 }
 
 // ==========================================
