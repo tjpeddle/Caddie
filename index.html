@@ -317,6 +317,7 @@ button:active { transform: scale(0.95); }
     </div>
     <div class="round-body" id="roundBody"></div>
     <div class="bottom-nav">
+        <button class="nav-btn" onclick="goToPutting()"><span class="nav-icon">🎯</span>Putt</button>
         <button class="nav-btn" onclick="showScorecard()"><span class="nav-icon">📋</span>Card</button>
         <button class="nav-btn" onclick="showStats()"><span class="nav-icon">📊</span>Stats</button>
         <button class="nav-btn" onclick="showHistory()"><span class="nav-icon">📜</span>History</button>
@@ -326,8 +327,10 @@ button:active { transform: scale(0.95); }
 
 <!-- ==================== PUTTING SCREEN ==================== -->
 <div id="puttScreen" class="screen">
-    <div class="putt-header">
+    <div class="putt-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <button onclick="exitPutting()" style="background:var(--surface2); color:var(--gray); border:none; border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700;">← BACK</button>
         <div class="putt-header-title" id="puttHeaderTitle">SELECT CLOCK · DISTANCE · SLOPE</div>
+        <div style="width:60px"></div>
     </div>
     <div class="putt-body">
         <!-- Clock face -->
@@ -413,7 +416,7 @@ const STATE = {
     currentHole: 1,
     holes: [],              // { number, par, fairway, green, missLocation, upDown, bunkerUpDown, putts, puttDistances[] }
     currentHoleData: null,
-    roundStep: 'fairway',   // fairway, approach, miss_location, up_down, putt, result, next
+    roundStep: 'par',       // par, fairway, approach, green, miss_location, up_down, putt, next
     
     // Practice tracking
     practiceSession: { putts: [], totalMade: 0, totalMissed: 0, startTime: null },
@@ -608,7 +611,10 @@ function startRound() {
 }
 
 function newHoleData(num) {
-    return { number: num, par: 4, fairway: null, fairwayMiss: null, green: null, missLocation: null, upDown: null, putts: 0, puttDistances: [], score: null };
+    return { number: num, par: null, fairway: null, fairwayMiss: null, 
+             approaches: [], // { club, distance }
+             green: null, missLocation: null, upDown: null, 
+             putts: 0, puttDistances: [], score: null };
 }
 
 // ==========================================
@@ -621,6 +627,16 @@ function renderRoundStep() {
     updateScoreDisplay();
     
     switch (STATE.roundStep) {
+        case 'par':
+            body.innerHTML = `
+                <div class="stat-question">PAR</div>
+                <div class="stat-row">
+                    <button class="stat-btn neutral" onclick="recordPar(3)"><span class="icon">3</span></button>
+                    <button class="stat-btn neutral" onclick="recordPar(4)"><span class="icon">4</span></button>
+                    <button class="stat-btn neutral" onclick="recordPar(5)"><span class="icon">5</span></button>
+                </div>`;
+            break;
+
         case 'fairway':
             body.innerHTML = `
                 <div class="stat-question">Fairway?</div>
@@ -628,13 +644,27 @@ function renderRoundStep() {
                     <button class="stat-btn yes" onclick="recordFairway('hit')"><span class="icon">✓</span><span class="label">HIT</span></button>
                     <button class="stat-btn miss-left" onclick="recordFairway('left')"><span class="icon">←</span><span class="label">MISS L</span></button>
                     <button class="stat-btn miss-right" onclick="recordFairway('right')"><span class="icon">→</span><span class="label">MISS R</span></button>
-                </div>
-                <div class="stat-row" style="margin-top: 8px">
-                    <button class="stat-btn neutral" onclick="recordFairway('skip')" style="flex:1"><span class="label">PAR 3 / SKIP</span></button>
                 </div>`;
             break;
             
         case 'approach':
+            const shotNum = h.approaches.length + 1;
+            const shotLabel = h.par === 5 && shotNum === 1 ? '2ND SHOT' : h.par === 5 && shotNum === 2 ? '3RD SHOT' : 'APPROACH';
+            const clubs = ['60°','56°','52°','PW','9i','8i','7i','6i','5i','4i','3i','HYB','5W','3W','DRV'];
+            body.innerHTML = `
+                <div class="stat-question">${shotLabel}</div>
+                <div class="setup-label" style="margin-top:8px">Club</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:400px; margin:0 auto;">
+                    ${clubs.map(c => `<button class="dist-preset club-pick" onclick="pickClub('${c}')" data-club="${c}">${c}</button>`).join('')}
+                </div>
+                <div class="setup-label" style="margin-top:12px">Distance to Flag</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:400px; margin:0 auto;">
+                    ${[60,80,100,120,130,140,150,160,170,180,200].map(d => `<button class="dist-preset yardage-pick" onclick="pickYardage(${d})" data-yard="${d}">${d}</button>`).join('')}
+                </div>
+                <button class="next-hole-btn" id="approachConfirmBtn" onclick="confirmApproach()" style="margin-top:12px; opacity:0.3; pointer-events:none;">CONFIRM SHOT</button>`;
+            break;
+
+        case 'green':
             body.innerHTML = `
                 <div class="stat-question">Green in Regulation?</div>
                 <div class="stat-row">
@@ -684,10 +714,58 @@ function renderRoundStep() {
     }
 }
 
+function recordPar(p) {
+    STATE.currentHoleData.par = p;
+    if (p === 3) {
+        STATE.roundStep = 'approach'; // skip fairway for par 3
+    } else {
+        STATE.roundStep = 'fairway';
+    }
+    renderRoundStep();
+}
+
 function recordFairway(result) {
     STATE.currentHoleData.fairway = result === 'hit';
     STATE.currentHoleData.fairwayMiss = result === 'left' ? 'left' : result === 'right' ? 'right' : null;
     STATE.roundStep = 'approach';
+    renderRoundStep();
+}
+
+// Club + distance approach tracking
+let _pendingClub = null, _pendingYardage = null;
+
+function pickClub(club) {
+    _pendingClub = club;
+    document.querySelectorAll('.club-pick').forEach(b => b.classList.toggle('active', b.dataset.club === club));
+    checkApproachReady();
+}
+
+function pickYardage(y) {
+    _pendingYardage = y;
+    document.querySelectorAll('.yardage-pick').forEach(b => b.classList.toggle('active', parseInt(b.dataset.yard) === y));
+    checkApproachReady();
+}
+
+function checkApproachReady() {
+    const btn = document.getElementById('approachConfirmBtn');
+    if (btn && _pendingClub && _pendingYardage) {
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+    }
+}
+
+function confirmApproach() {
+    if (!_pendingClub || !_pendingYardage) return;
+    STATE.currentHoleData.approaches.push({ club: _pendingClub, distance: _pendingYardage });
+    _pendingClub = null;
+    _pendingYardage = null;
+    
+    // Par 5: need 2 approach shots before green check
+    if (STATE.currentHoleData.par === 5 && STATE.currentHoleData.approaches.length < 2) {
+        STATE.roundStep = 'approach'; // ask for another shot
+    } else {
+        STATE.roundStep = 'green';
+    }
     renderRoundStep();
 }
 
@@ -713,6 +791,21 @@ function recordUpDown(made) {
     renderRoundStep();
 }
 
+// Navigation helpers
+function goToPutting() {
+    showScreen('puttScreen');
+    const h = STATE.currentHoleData;
+    document.getElementById('puttHeaderTitle').textContent = h ? 'HOLE ' + h.number + ' · PUTT ' + (h.putts + 1) : 'PUTTING';
+}
+
+function exitPutting() {
+    if (STATE.mode === 'round') {
+        showScreen('roundScreen');
+    } else {
+        showScreen('setupScreen');
+    }
+}
+
 function adjustPutts(delta) {
     STATE.currentHoleData.putts = Math.max(0, STATE.currentHoleData.putts + delta);
     renderRoundStep();
@@ -729,7 +822,7 @@ function nextHole() {
     }
     
     STATE.currentHoleData = newHoleData(STATE.currentHole);
-    STATE.roundStep = 'fairway';
+    STATE.roundStep = 'par';
     showScreen('roundScreen');
     renderRoundStep();
 }
