@@ -248,7 +248,7 @@ button:active { transform: scale(0.95); }
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     text-transform: uppercase; letter-spacing: 0.5px;
 }
-.nav-btn .nav-icon { font-size: 20px; }
+.nav-btn .nav-icon { font-size: 20px; display: flex; align-items: center; justify-content: center; }
 .nav-btn.active { color: var(--green); }
 
 /* Next hole button */
@@ -283,34 +283,32 @@ button:active { transform: scale(0.95); }
 /* Club card grid */
 .club-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 400px; margin: 0 auto; }
 .club-card {
-    width: 62px; padding: 8px 4px; border-radius: 12px; background: var(--surface);
-    color: var(--gray); text-align: center; border: 2px solid transparent;
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 62px; padding: 14px 4px; border-radius: 12px; background: var(--surface);
+    color: #c0c8d0; text-align: center; border: 2px solid var(--surface2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.club-card.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
-.club-card .club-icon { font-size: 20px; line-height: 1; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); }
-.club-card .club-icon img { width: 36px; height: 36px; object-fit: cover; border-radius: 50%; }
-.club-card .club-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; }
+.club-card.active { background: var(--green-dim); color: #fff; border-color: var(--green); }
+.club-card .club-icon { display: none; }
+.club-card .club-name { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
 
 /* Tee club selection */
 .tee-clubs { display: flex; gap: 8px; justify-content: center; max-width: 400px; margin: 0 auto; flex-wrap: wrap; }
 .tee-club-btn {
-    padding: 14px 16px; border-radius: var(--radius); background: var(--surface);
-    color: var(--gray); text-align: center; border: 2px solid transparent;
-    display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 60px;
+    padding: 18px 20px; border-radius: var(--radius); background: var(--surface);
+    color: #c0c8d0; text-align: center; border: 2px solid var(--surface2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 64px;
 }
-.tee-club-btn.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
-.tee-club-btn .club-icon { font-size: 22px; width: 48px; height: 48px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); }
-.tee-club-btn .club-icon img { width: 44px; height: 44px; object-fit: cover; border-radius: 50%; }
-.tee-club-btn .club-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
+.tee-club-btn.active { background: var(--green-dim); color: #fff; border-color: var(--green); }
+.tee-club-btn .club-icon { display: none; }
+.tee-club-btn .club-name { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 900; letter-spacing: 0.5px; }
 
 /* Yardage slider */
 .yardage-display {
-    font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 700;
-    color: var(--white); text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 44px; font-weight: 900;
+    color: #fff; text-align: center;
 }
-.yardage-display span { font-size: 16px; color: var(--gray); }
-.yardage-slider { width: 100%; max-width: 360px; height: 44px; -webkit-appearance: none; appearance: none; background: var(--surface); border-radius: 22px; outline: none; margin: 4px auto; display: block; }
+.yardage-display span { font-size: 20px; color: var(--green); font-weight: 700; }
+.yardage-slider { width: 100%; max-width: 360px; height: 44px; -webkit-appearance: none; appearance: none; background: linear-gradient(90deg, var(--green-dim), var(--surface)); border-radius: 22px; outline: none; margin: 4px auto; display: block; border: 1px solid var(--surface2); }
 .yardage-slider::-webkit-slider-thumb {
     -webkit-appearance: none; width: 44px; height: 44px; border-radius: 50%;
     background: var(--green); cursor: pointer; border: 3px solid var(--white);
@@ -357,11 +355,11 @@ button:active { transform: scale(0.95); }
     </div>
     <div class="round-body" id="roundBody"></div>
     <div class="bottom-nav">
-        <button class="nav-btn" onclick="goToPutting()"><span class="nav-icon">🎯</span>Putt</button>
-        <button class="nav-btn" onclick="showScorecard()"><span class="nav-icon">📋</span>Card</button>
-        <button class="nav-btn" onclick="showStats()"><span class="nav-icon">📊</span>Stats</button>
-        <button class="nav-btn" onclick="showHistory()"><span class="nav-icon">📜</span>History</button>
-        <button class="nav-btn" onclick="endRound()"><span class="nav-icon">🏁</span>End</button>
+        <button class="nav-btn" onclick="goToPutting()"><span class="nav-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" stroke="currentColor" stroke-width="2"/><circle cx="11" cy="11" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="11" r="1.5" fill="currentColor"/></svg></span>PUTT</button>
+        <button class="nav-btn" onclick="showScorecard()"><span class="nav-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="2" width="16" height="18" rx="2" stroke="currentColor" stroke-width="2"/><line x1="7" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/><line x1="7" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.5"/><line x1="7" y1="15" x2="12" y2="15" stroke="currentColor" stroke-width="1.5"/></svg></span>CARD</button>
+        <button class="nav-btn" onclick="showStats()"><span class="nav-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="12" width="4" height="8" rx="1" fill="currentColor"/><rect x="9" y="6" width="4" height="14" rx="1" fill="currentColor"/><rect x="15" y="2" width="4" height="18" rx="1" fill="currentColor"/></svg></span>STATS</button>
+        <button class="nav-btn" onclick="showHistory()"><span class="nav-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" stroke="currentColor" stroke-width="2"/><polyline points="11,5 11,11 15,13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>HISTORY</button>
+        <button class="nav-btn" onclick="endRound()"><span class="nav-icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 3 L4 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 3 L18 3 L14 8 L18 13 L4 13" fill="currentColor" opacity="0.9"/></svg></span>END</button>
     </div>
 </div>
 
@@ -749,23 +747,15 @@ function renderRoundStep() {
             
         case 'chip': {
             const loc = h.missLocation || 'rough';
-            const chipClubs = ['60°','56°','52°','PW','9i','8i'];
             body.innerHTML = `
-                <div class="stat-question">CHIP / PITCH</div>
-                <div class="setup-label" style="margin-top:6px">From ${loc.toUpperCase()}</div>
-                <div class="setup-label" style="margin-top:10px">Club</div>
-                <div class="club-grid">
-                    ${chipClubs.map(c => '<button class="club-card club-pick" onclick="pickChipClub(\'' + c + '\')" data-club="' + c + '"><span class="club-name">' + c + '</span></button>').join('')}
-                </div>
-                <div class="setup-label" style="margin-top:10px">How close to the pin?</div>
-                <div class="stat-row">
-                    <button class="stat-btn neutral" onclick="recordChipResult('inside5')"><span class="icon">🎯</span><span class="label">&lt; 5ft</span></button>
-                    <button class="stat-btn neutral" onclick="recordChipResult('5to15')"><span class="icon">📏</span><span class="label">5-15ft</span></button>
-                    <button class="stat-btn neutral" onclick="recordChipResult('15to30')"><span class="icon">📐</span><span class="label">15-30ft</span></button>
-                    <button class="stat-btn neutral" onclick="recordChipResult('30plus')"><span class="icon">🏃</span><span class="label">30ft+</span></button>
-                </div>
-                <div class="stat-row" style="margin-top:8px">
-                    <button class="stat-btn yes" onclick="recordChipResult('holed')" style="flex:1"><span class="icon">⛳</span><span class="label">CHIPPED IN!</span></button>
+                <div class="stat-question">FROM ${loc.toUpperCase()}</div>
+                <div class="setup-label" style="margin-top:8px">How close did you chip it?</div>
+                <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:400px; margin:12px auto 0;">
+                    <button class="stat-btn neutral" onclick="recordChipResult('inside5')" style="padding:20px; font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;">INSIDE 5 FT</button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('5to15')" style="padding:20px; font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;">5 – 15 FT</button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('15to30')" style="padding:20px; font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;">15 – 30 FT</button>
+                    <button class="stat-btn neutral" onclick="recordChipResult('30plus')" style="padding:20px; font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;">30 FT +</button>
+                    <button class="stat-btn yes" onclick="recordChipResult('holed')" style="padding:20px; font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;">⛳ CHIPPED IN!</button>
                 </div>`;
             break;
         }
@@ -908,12 +898,8 @@ function recordMissLocation(loc) {
     renderRoundStep();
 }
 
-function pickChipClub(club) {
-    STATE.currentHoleData.chipClub = club;
-    document.querySelectorAll('.chip .club-pick').forEach(b => b.classList.toggle('active', b.dataset.club === club));
-}
-
 function recordChipResult(proximity) {
+    STATE.currentHoleData.chipClub = '56°';
     STATE.currentHoleData.chipProximity = proximity;
     if (proximity === 'holed') {
         // Chipped in! That's an automatic up & down (or better)
