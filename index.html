@@ -58,7 +58,7 @@ button:active { transform: scale(0.95); }
 .speed-btn.active { background: var(--green-dim); color: var(--white); border-color: var(--green); }
 .mode-btn { padding: 20px 8px; font-size: 16px; }
 .mode-btn.round-btn { border-color: var(--green-dim); }
-.mode-btn.practice-btn { border-color: var(--gold); }
+.mode-btn.putting-btn { border-color: var(--green-dim); }
 .mode-btn:active { transform: scale(0.97); }
 .start-btn {
     width: 100%; max-width: 380px; padding: 18px; border-radius: var(--radius);
@@ -304,7 +304,7 @@ button:active { transform: scale(0.95); }
         <div class="setup-label">Mode</div>
         <div class="mode-btns">
             <button class="mode-btn round-btn" onclick="startRound()">🏌️ Round</button>
-            <button class="mode-btn practice-btn" onclick="startPractice()">🎯 Practice</button>
+            <button class="mode-btn putting-btn" onclick="startPutting()">🎯 Putting</button>
         </div>
     </div>
 </div>
@@ -523,12 +523,12 @@ function getAimPoint(distance, slope, stimp, clockPos) {
     // Description
     let desc = '';
     if (adjusted < 2) desc = 'Center of the cup';
-    else if (adjusted <= 4) desc = `Aim at the ${direction} edge`;
-    else if (adjusted <= 12) desc = `${adjusted}" ${direction}`;
+    else if (adjusted <= 4) desc = `Aim ${adjusted}" up the fall line`;
+    else if (adjusted <= 12) desc = `Aim ${adjusted}" up the fall line`;
     else {
         const ft = Math.floor(adjusted / 12);
         const inches = adjusted % 12;
-        desc = inches === 0 ? `${ft}ft ${direction}` : `${ft}'${inches}" ${direction}`;
+        desc = inches === 0 ? `Aim ${ft}ft up the fall line` : `Aim ${ft}'${inches}" up the fall line`;
     }
     
     return { inches: adjusted, direction, elevation, description: desc, clockPos, angleMultiplier };
@@ -821,7 +821,7 @@ function showResult(feet, clockPos, slope, aim) {
         document.getElementById('resultAimDir').textContent = 'STRAIGHT · CENTER CUP';
     } else {
         document.getElementById('resultAimValue').textContent = aim.inches <= 12 ? `${aim.inches}"` : `${Math.floor(aim.inches/12)}'${aim.inches%12}"`;
-        document.getElementById('resultAimDir').textContent = `${aim.direction.toUpperCase()} OF CENTER`;
+        document.getElementById('resultAimDir').textContent = 'ABOVE HOLE ON FALL LINE';
     }
     document.getElementById('resultDetail').textContent = `${feet}ft · ${clockPos} o'clock · ${slope}% · ${STATE.greenSpeed}`;
     
@@ -848,15 +848,12 @@ function buildPuttViz(feet, clockPos, slope, aim) {
     
     const aimInches = aim.inches;
     const aimDir = aim.direction;
-    const aimOffsetPx = Math.min(120, aimInches * 3.5);
+    // Aim offset: matches practice mode scaling (7px per inch, max 200px)
+    const aimOffsetPx = Math.min(200, aimInches * 7);
     
-    const bhDx = holeX - ballX, bhDy = holeY - ballY;
-    const bhLen = Math.sqrt(bhDx*bhDx + bhDy*bhDy) || 1;
-    const leftX = bhDy / bhLen, leftY = -bhDx / bhLen;
-    
-    let aimX = holeX, aimY = holeY;
-    if (aimDir === 'left') { aimX = holeX + leftX * aimOffsetPx; aimY = holeY + leftY * aimOffsetPx; }
-    else if (aimDir === 'right') { aimX = holeX - leftX * aimOffsetPx; aimY = holeY - leftY * aimOffsetPx; }
+    // ZBL direction = straight up (toward 12 o'clock) = (0, -1) in SVG
+    let aimX = holeX;
+    let aimY = holeY - aimOffsetPx; // always ABOVE the hole on the fall line
     
     // ViewBox
     const allX = [holeX, ballX, aimX], allY = [holeY, ballY, aimY];
@@ -894,13 +891,16 @@ function buildPuttViz(feet, clockPos, slope, aim) {
     
     // Aim point + measurement
     if (aimInches >= 2) {
+        // Aim point dot (on ZBL above hole)
         s += `<circle cx="${aimX}" cy="${aimY}" r="8" fill="#fbbf24" opacity="0.8" filter="url(#gl)"/>`;
         s += `<circle cx="${aimX}" cy="${aimY}" r="4" fill="#fff" opacity="0.9"/>`;
-        const lo = (aimX-holeX), li = (aimY-holeY), ll = Math.sqrt(lo*lo+li*li)||1;
-        s += `<text x="${aimX+(lo/ll)*20}" y="${aimY+(li/ll)*20-6}" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700" font-family="JetBrains Mono">AIM</text>`;
+        // AIM label above the dot
+        s += `<text x="${aimX}" y="${aimY-16}" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700" font-family="JetBrains Mono">AIM</text>`;
+        // ZBL line from hole up to aim point (the fall line)
         s += `<line x1="${holeX}" y1="${holeY}" x2="${aimX}" y2="${aimY}" stroke="#fbbf24" stroke-width="1.5" opacity="0.4" stroke-dasharray="3,3"/>`;
-        const mx = (holeX+aimX)/2, my = (holeY+aimY)/2;
-        s += `<text x="${mx}" y="${my+18}" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="JetBrains Mono" opacity="0.8">${aimInches}"</text>`;
+        // Measurement label
+        const mx = aimX + 20, my = (holeY + aimY) / 2;
+        s += `<text x="${mx}" y="${my}" text-anchor="start" fill="#fbbf24" font-size="13" font-weight="700" font-family="JetBrains Mono" opacity="0.8">${aimInches}"</text>`;
     }
     
     // Start line
@@ -968,7 +968,7 @@ function recordResult(result) {
         STATE.clockPos = null;
         document.querySelectorAll('.clock-num').forEach(b => b.classList.remove('active'));
         showScreen('puttScreen');
-        document.getElementById('puttHeaderTitle').textContent = `PRACTICE · ${STATE.practiceSession.totalMade}/${STATE.practiceSession.totalMade + STATE.practiceSession.totalMissed} made`;
+        document.getElementById('puttHeaderTitle').textContent = `PUTTING · ${STATE.practiceSession.totalMade}/${STATE.practiceSession.totalMade + STATE.practiceSession.totalMissed} made`;
     }
 }
 
@@ -981,14 +981,14 @@ function dismissResult() {
 }
 
 // ==========================================
-// PRACTICE MODE
+// PUTTING MODE
 // ==========================================
-function startPractice() {
+function startPutting() {
     if (!STATE.greenSpeed) { alert('Set green speed first'); return; }
     STATE.mode = 'practice';
     STATE.practiceSession = { putts: [], totalMade: 0, totalMissed: 0, startTime: Date.now() };
     showScreen('puttScreen');
-    document.getElementById('puttHeaderTitle').textContent = 'PRACTICE · 0/0 made';
+    document.getElementById('puttHeaderTitle').textContent = 'PUTTING · 0/0 made';
 }
 
 // ==========================================
